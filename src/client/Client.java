@@ -117,6 +117,7 @@ final public class Client {
 
         // Expect addr:ServerAddress, port:ServerPort if Successful
         HashMap<String, String> fileServerAddress;
+        System.out.println("Trying to Fetch Server Address");
         try {
             fileServerAddress = fetchServerAddress(
                     new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
@@ -124,8 +125,10 @@ final public class Client {
             e.printStackTrace();
             return DownloadStatus.DOWNLOAD_FAIL;
         }
+        System.out.println("Fetched Server Address");
 
         // If valid Address returned, attempt to connect to FileServer
+        System.out.println("Trying to connect to Address");
         try {
             this.fileSocket = new Socket(fileServerAddress.get("addr"),
                     Integer.parseInt(fileServerAddress.get("port")));
@@ -133,14 +136,17 @@ final public class Client {
             e.printStackTrace();
             return DownloadStatus.DOWNLOAD_FAIL;
         }
+        System.out.println("Connected to Address");
 
         // Send a DownloadRequest to the File Server
         // Expect DOWNLOAD_START if file exists and all is successful
+        System.out.println("Trying to send a request to Address");
         HashMap<String, String> requestHeaders = new HashMap<String, String>();
         requestHeaders.put("code:", code);
         if (!MessageHelpers.sendMessageTo(fileSocket,
                 new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, name, this.authToken)))
             return DownloadStatus.DOWNLOAD_FAIL;
+        System.out.println("Sent a request to Address");
 
         // Parse Response
         Message response = MessageHelpers.receiveMessageFrom(fileSocket);
@@ -152,13 +158,15 @@ final public class Client {
             return DownloadStatus.DOWNLOAD_FAIL;
 
         HashMap<String, String> responseHeaders = castResponse.getHeaders();
+
         // Check if Save Path exists
         // If not, try to create it
-        savePath.resolve(responseHeaders.get("fileName"));
+        System.out.println(responseHeaders.get("fileName"));
+        savePath = savePath.resolve(responseHeaders.get("fileName"));
 
         if (Files.notExists(savePath))
             try {
-                Files.createDirectories(savePath);
+                Files.createFile(savePath);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -177,10 +185,13 @@ final public class Client {
 
             // Temporary var to keep track of read Bytes
             int _temp_c;
-            while ((_temp_c = fileFromServer.read(writeBuffer)) != -1)
+            while ((_temp_c = fileFromServer.read(writeBuffer, 0, writeBuffer.length)) != -1) {
                 fileOnClient.write(writeBuffer, 0, _temp_c);
+                fileOnClient.flush();
+            }
 
-            // file successfully downloaded
+            // File successfully downloaded
+            fileOnClient.close();
             return DownloadStatus.DOWNLOAD_SUCCESS;
 
         } catch (IOException e) {

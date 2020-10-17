@@ -21,23 +21,25 @@ final public class AuthServerHandler implements Runnable {
      * looking at the status field.
      */
     public void run() {
-        // Expect a Message from the Client
-        Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
+        while (true) {
+            // Expect a Message from the Client
+            Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
 
-        // Central Logic
-        // Execute different methods after checking Message status
+            // Central Logic
+            // Execute different methods after checking Message status
 
-        switch (request.getRequestKind()) {
-            case Login:
-                logInUser((LoginMessage) request);
-                break;
-            case LocateServer:
-                locateFileServer((LocateServerMessage) request);
-                break;
-            case Register:
-                break;
-            default:
-                break;
+            switch (request.getRequestKind()) {
+                case Login:
+                    logInUser((LoginMessage) request);
+                    break;
+                case LocateServer:
+                    locateFileServer((LocateServerMessage) request);
+                    break;
+                case Register:
+                    break;
+                default:
+                    return;
+            }
         }
     }
 
