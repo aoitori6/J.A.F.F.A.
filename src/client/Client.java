@@ -117,7 +117,6 @@ final public class Client {
 
         // Expect addr:ServerAddress, port:ServerPort if Successful
         HashMap<String, String> fileServerAddress;
-        System.out.println("Trying to Fetch Server Address");
         try {
             fileServerAddress = fetchServerAddress(
                     new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
@@ -125,10 +124,8 @@ final public class Client {
             e.printStackTrace();
             return DownloadStatus.DOWNLOAD_FAIL;
         }
-        System.out.println("Fetched Server Address");
 
         // If valid Address returned, attempt to connect to FileServer
-        System.out.println("Trying to connect to Address");
         try {
             this.fileSocket = new Socket(fileServerAddress.get("addr"),
                     Integer.parseInt(fileServerAddress.get("port")));
@@ -136,17 +133,14 @@ final public class Client {
             e.printStackTrace();
             return DownloadStatus.DOWNLOAD_FAIL;
         }
-        System.out.println("Connected to Address");
 
         // Send a DownloadRequest to the File Server
         // Expect DOWNLOAD_START if file exists and all is successful
-        System.out.println("Trying to send a request to Address");
         HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("code:", code);
+        requestHeaders.put("code", code);
         if (!MessageHelpers.sendMessageTo(fileSocket,
                 new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, name, this.authToken)))
             return DownloadStatus.DOWNLOAD_FAIL;
-        System.out.println("Sent a request to Address");
 
         // Parse Response
         Message response = MessageHelpers.receiveMessageFrom(fileSocket);
@@ -161,7 +155,6 @@ final public class Client {
 
         // Check if Save Path exists
         // If not, try to create it
-        System.out.println(responseHeaders.get("fileName"));
         savePath = savePath.resolve(responseHeaders.get("fileName"));
 
         if (Files.notExists(savePath))
@@ -178,6 +171,7 @@ final public class Client {
         byte[] writeBuffer = new byte[buffSize];
         BufferedInputStream fileFromServer;
         BufferedOutputStream fileOnClient;
+        System.err.print("LOG: Beginning File Download");
         try {
             // Begin connecting to file Server and establish read/write Streams
             fileFromServer = new BufferedInputStream(fileSocket.getInputStream());
@@ -191,6 +185,8 @@ final public class Client {
             }
 
             // File successfully downloaded
+            System.err.print("LOG: Finishing File Download");
+
             fileOnClient.close();
             return DownloadStatus.DOWNLOAD_SUCCESS;
 

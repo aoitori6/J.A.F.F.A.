@@ -2,9 +2,12 @@ package fileserver;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.file.Paths;
+import java.sql.*;
 import java.util.HashMap;
 
 import message.*;
@@ -12,9 +15,13 @@ import statuscodes.DownloadStatus;
 
 final public class FileServerHandler implements Runnable {
     private final Socket clientSocket;
+    private final Connection fileDB;
 
-    FileServerHandler(Socket clientSocket) {
+    private final static String HOME = System.getProperty("user.home");
+
+    FileServerHandler(Socket clientSocket, Connection fileDB) {
         this.clientSocket = clientSocket;
+        this.fileDB = fileDB;
     }
 
     @Override
@@ -64,15 +71,69 @@ final public class FileServerHandler implements Runnable {
     private void serverDownload(DownloadMessage request) {
         // TODO: Fetching Actual files from a MySQL DB
         // TODO: Re-checking auth token
-
         HashMap<String, String> headers = new HashMap<String, String>();
-
-        // For now, simply transfer a standard, 500 MB file;
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
-            // If successfull, send a DOWNLOAD_START message with fileName in Headers
-            headers.put("fileName", "test.bin");
-            MessageHelpers.sendMessageTo(this.clientSocket,
-                    new DownloadMessage(DownloadStatus.DOWNLOAD_START, headers, "File Server", "tempServerKey"));
+
+            // First check fileDB if Code exists
+            String query = "SELECT * FROM FILE WHERE CODE = ?;";
+            PreparedStatement checkCode;
+            ResultSet queryResp;
+            try {
+                // Querying DB
+                checkCode = fileDB.prepareStatement(query);
+                checkCode.setString(1, request.getHeaders().get("code"));
+                queryResp = checkCode.executeQuery();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            } finally {
+                query = null;
+                checkCode = null;
+            }
+
+            // Processing Result Set
+
+            // TODO: Check cases for download and time caps
+            // First check if Result Set is empty
+            File filePath;
+            try {
+                String code;
+                headers.clear();
+                if (queryResp.next() == false) {
+                    // Implies Code doesn't exist
+                    headers.put("fileName", null);
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
+                    return;
+                }
+
+                else {
+                    // Code exists, send respons to Client
+                    code = queryResp.getString("code");
+
+                    // Getting path of File on the machine
+                    // General Path expected is USER_HOME/sharenowdb/fileCode/file
+                    // TODO: Make DB path mutable
+                    filePath = Paths.get(HOME, "sharenowdb", code).toFile().listFiles()[0];
+
+                    // Check if file exists, should always be the case
+                    if (!filePath.exists()) {
+                        System.out.println(
+                                "ERROR. Critical error in File DB! File exists in MySQL DB but Path was invalid!");
+                        this.clientSocket.close();
+                        return;
+                    }
+
+                    headers.put("fileName", filePath.getName());
+                    MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_START,
+                            headers, "File Server", "tempServerKey"));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            } finally {
+                headers = null;
+            }
 
             // Prep for File transfer
             int buffSize = 1_048_576;
@@ -82,7 +143,7 @@ final public class FileServerHandler implements Runnable {
 
             try {
                 // Begin connecting to file Server and establish read/write Streams
-                fileFromDB = new BufferedInputStream(new FileInputStream("D:\\test.pdf"));
+                fileFromDB = new BufferedInputStream(new FileInputStream(filePath.getAbsolutePath()));
                 fileToClient = new BufferedOutputStream(clientSocket.getOutputStream());
 
                 // Temporary var to keep track of read Bytes
