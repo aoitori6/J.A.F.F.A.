@@ -26,7 +26,7 @@ public class AuthServer {
 
     }
 
-    public void start() {
+    public void start() throws IOException {
         if (authServer.equals(null))
             throw new NullPointerException("Error. Auth Server was not initialized!");
 
@@ -40,6 +40,7 @@ public class AuthServer {
 
         }
 
+        this.authServer.close();
         threadPool.shutdown();
     }
 

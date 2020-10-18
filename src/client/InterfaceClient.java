@@ -35,9 +35,10 @@ final public class InterfaceClient {
         System.out.println("Default Save Path is User's Home Directory");
         String savePath = conInput.nextLine();
 
-        if (savePath.equals(""))
+        if (savePath.equals(" "))
             savePath = HOME;
 
+        System.out.println("Querying Server");
         if (client.downloadFile(code, Paths.get(savePath)) == DownloadStatus.DOWNLOAD_SUCCESS)
             System.out.println("File Downloaded Succesfully");
         else

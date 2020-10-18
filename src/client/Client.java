@@ -137,7 +137,7 @@ final public class Client {
         // Send a DownloadRequest to the File Server
         // Expect DOWNLOAD_START if file exists and all is successful
         HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("code:", code);
+        requestHeaders.put("code", code);
         if (!MessageHelpers.sendMessageTo(fileSocket,
                 new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, name, this.authToken)))
             return DownloadStatus.DOWNLOAD_FAIL;
@@ -152,13 +152,14 @@ final public class Client {
             return DownloadStatus.DOWNLOAD_FAIL;
 
         HashMap<String, String> responseHeaders = castResponse.getHeaders();
+
         // Check if Save Path exists
         // If not, try to create it
-        savePath.resolve(responseHeaders.get("fileName"));
+        savePath = savePath.resolve(responseHeaders.get("fileName"));
 
         if (Files.notExists(savePath))
             try {
-                Files.createDirectories(savePath);
+                Files.createFile(savePath);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -170,6 +171,7 @@ final public class Client {
         byte[] writeBuffer = new byte[buffSize];
         BufferedInputStream fileFromServer;
         BufferedOutputStream fileOnClient;
+        System.err.print("LOG: Beginning File Download");
         try {
             // Begin connecting to file Server and establish read/write Streams
             fileFromServer = new BufferedInputStream(fileSocket.getInputStream());
@@ -177,10 +179,15 @@ final public class Client {
 
             // Temporary var to keep track of read Bytes
             int _temp_c;
-            while ((_temp_c = fileFromServer.read(writeBuffer)) != -1)
+            while ((_temp_c = fileFromServer.read(writeBuffer, 0, writeBuffer.length)) != -1) {
                 fileOnClient.write(writeBuffer, 0, _temp_c);
+                fileOnClient.flush();
+            }
 
-            // file successfully downloaded
+            // File successfully downloaded
+            System.err.print("LOG: Finishing File Download");
+
+            fileOnClient.close();
             return DownloadStatus.DOWNLOAD_SUCCESS;
 
         } catch (IOException e) {
