@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 
 import message.*;
+import statuscodes.ErrorStatus;
 import statuscodes.LocateServerStatus;
 import statuscodes.LoginStatus;
 
@@ -27,7 +28,7 @@ final public class AuthServerHandler implements Runnable {
      * looking at the status field.
      */
     public void run() {
-        while(true) { 
+        listenLoop: while (true) {
             // Expect a Message from the Client
             Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
 
@@ -44,9 +45,23 @@ final public class AuthServerHandler implements Runnable {
                 case Register:
                     break;
                 default:
-                    break;
+                    generateErrorMessage(request);
+                    break listenLoop;
             }
         }
+    }
+
+    /**
+     * Function that generates and sends an ErrorMessage to the Client. Invoked only
+     * when a {@code Message} with an invalid RequestKind is received by the Server.
+     * Whether a specific RequestKind is invalid or not is dependant on the Server
+     * configuration.
+     * 
+     * @param request Received Message with invalid RequestKind
+     */
+    private void generateErrorMessage(Message request) {
+        MessageHelpers.sendMessageTo(this.clientSocket,
+                new ErrorMessage(ErrorStatus.INVALID_TO_AUTH_REQUEST, request.getHeaders(), "Auth Server"));
     }
 
     /**
@@ -64,15 +79,15 @@ final public class AuthServerHandler implements Runnable {
 
         HashMap<String, String> headers = new HashMap<String, String>();
 
-        // Authentication from client_database
+        // Check if valid Login Request
         if (request.getStatus() == LoginStatus.LOGIN_REQUEST) {
 
-            // Find the user with the given Username
-            String authenticateQuery = "SELECT * FROM client where Username = ?;";
+            // Begin querying Auth DB with supplied username
+            String authenticateQuery = "SELECT * FROM client WHERE username = ?;";
             PreparedStatement findUser;
             ResultSet queryResp = null;
-            try{
-                //Quering client_database
+            try {
+                // Create and execute query
                 findUser = connection.prepareStatement(authenticateQuery);
                 findUser.setString(1, request.getSender());
                 queryResp = findUser.executeQuery();
@@ -83,42 +98,44 @@ final public class AuthServerHandler implements Runnable {
                 authenticateQuery = null;
                 findUser = null;
             }
-            
+
             try {
                 headers.clear();
 
+                // Check query results
                 if (queryResp != null && queryResp.next() == false) {
-                    // Implies user doesn't exist
+                    // User doesn't exist
                     headers.put("authToken", null);
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LoginMessage(LoginStatus.LOGIN_FAIL, headers, "Auth Server"));
-                        return;
+                            new LoginMessage(LoginStatus.LOGIN_INVALID, headers, "Auth Server"));
+                    return;
                 }
 
                 else {
                     // User exists, checking password
                     String password = queryResp.getString("Password");
-                    
+
                     if (password.equals(request.getHeaders().get("pass"))) {
                         // Password entered by the user matches with the password in the database
                         // Updating user's login status
-                        String updateQuery = "UPDATE client SET Login_Status = ? where Username = ?;";
+                        String updateQuery = "UPDATE client SET login_status = ONLINE WHERE username = ?;";
                         PreparedStatement updateStatus = connection.prepareStatement(updateQuery);
-                        updateStatus.setString(1, "ONLINE");
                         updateStatus.setString(2, request.getSender());
                         updateStatus.executeUpdate();
 
                         // Sending success response to client
+                        // TODO: Generate proper, unique authToken
                         headers.put("authToken", "1");
                         MessageHelpers.sendMessageTo(this.clientSocket,
-                            new LoginMessage(LoginStatus.LOGIN_SUCCESS, headers, "Auth Server"));
+                                new LoginMessage(LoginStatus.LOGIN_SUCCESS, headers, "Auth Server"));
                     }
-                    
+
                     else {
-                        // Implies password entered by the user doesn't match with the password in the database
+                        // Implies password entered by the user doesn't match with the password in the
+                        // database
                         headers.put("authToken", null);
                         MessageHelpers.sendMessageTo(this.clientSocket,
-                            new LoginMessage(LoginStatus.LOGIN_FAIL, headers, "Auth Server"));
+                                new LoginMessage(LoginStatus.LOGIN_INVALID, headers, "Auth Server"));
                         return;
                     }
                 }
@@ -131,7 +148,7 @@ final public class AuthServerHandler implements Runnable {
         }
 
         else {
-            // Implies user didn't make a login request
+            // Invalid login request
             headers.put("authToken", null);
             MessageHelpers.sendMessageTo(this.clientSocket,
                     new LoginMessage(LoginStatus.LOGIN_FAIL, headers, "Auth Server"));

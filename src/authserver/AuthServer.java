@@ -36,15 +36,13 @@ public class AuthServer {
     }
 
     public void start() {
-        Connection connection = null;
-
         if (authServer.equals(null))
             throw new NullPointerException("Error. Auth Server was not initialized!");
 
         // Begin listening for new Socket connections
         while (!threadPool.isShutdown()) {
             try {
-                threadPool.execute(new AuthServerHandler(authServer.accept(), connection));
+                threadPool.execute(new AuthServerHandler(authServer.accept(), clientDB));
             } catch (IOException e) {
                 e.printStackTrace();
             }
