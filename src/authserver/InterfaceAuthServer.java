@@ -8,10 +8,8 @@ public class InterfaceAuthServer {
             AuthServer serverOne = new AuthServer();
             System.out.println("Port: "+serverOne.getServerPort());
             serverOne.start();
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
-        }
-        
-        
+        }   
     }
 }
