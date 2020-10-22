@@ -6,19 +6,21 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
+import java.util.Random;
 
 import message.*;
 import statuscodes.ErrorStatus;
 import statuscodes.LocateServerStatus;
 import statuscodes.LoginStatus;
+import statuscodes.RegisterStatus;
 
 final public class AuthServerHandler implements Runnable {
     private final Socket clientSocket;
-    private final Connection connection;
+    private static Connection connection;
 
     AuthServerHandler(Socket clientSocket, Connection connection) {
         this.clientSocket = clientSocket;
-        this.connection = connection;
+        AuthServerHandler.connection = connection;
     }
 
     @Override
@@ -43,6 +45,7 @@ final public class AuthServerHandler implements Runnable {
                     locateFileServer((LocateServerMessage) request);
                     break;
                 case Register:
+                    registerUser((RegisterMessage) request);
                     break;
                 default:
                     generateErrorMessage(request);
@@ -62,6 +65,110 @@ final public class AuthServerHandler implements Runnable {
     private void generateErrorMessage(Message request) {
         MessageHelpers.sendMessageTo(this.clientSocket,
                 new ErrorMessage(ErrorStatus.INVALID_TO_AUTH_REQUEST, request.getHeaders(), "Auth Server"));
+
+    }
+
+    /**
+     * WARNING: This function is not properly implemented yet since it's use case is
+     * not clearly defined. Helper function that generates a random alphanumeric
+     * String, to be used as an authToken, and then checks against the database to
+     * see if the authToken is unique
+     * 
+     * @return A String that is guaranteed to be unique against the Auth Database
+     *         provided
+     */
+    private static synchronized String generateUserAuthToken() {
+        // Generate a random 10-char alphanumeric String
+        // 97 corresponds to 'a' and 122 to 'z'
+        String tempAuthID = new Random().ints(97, 122 + 1).limit(10)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
+
+        return tempAuthID;
+    }
+
+    /**
+     * Takes a RegisterMessage object from the Client and tries to register the user
+     * vs a database.
+     * 
+     * @param request RegisterMessage received from Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @receivedInstructionIDs: REGISTER_REQUEST
+     * @sentInstructionIDs: REGISTER_SUCCESS, REGISTER_FAIL
+     * @receivedHeaders: pass:Password
+     */
+    private void registerUser(RegisterMessage request) {
+
+        if (request.getStatus() == RegisterStatus.REGISTER_REQUEST) {
+
+            // Check Auth DB if username is available
+            String query = "SELECT * FROM client WHERE username = ?;";
+            PreparedStatement statement;
+            ResultSet queryResp = null;
+            try {
+                // Create and execute query
+                statement = connection.prepareStatement(query);
+                statement.setString(1, request.getSender());
+                queryResp = statement.executeQuery();
+            } catch (SQLException e) {
+                e.printStackTrace();
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, "Auth Server"));
+                return;
+            } finally {
+                query = null;
+                statement = null;
+            }
+
+            // Check Query Results
+            try {
+                if (queryResp != null && queryResp.next() == false) {
+                    // Username is available
+                    // Create new user in client DB
+                    query = "INSERT INTO client(username, password) VALUES(?,?);";
+                    queryResp = null;
+
+                    // Create and execute query
+                    statement = connection.prepareStatement(query);
+                    statement.setString(1, request.getSender());
+                    statement.setString(2, request.getHeaders().get("pass"));
+                    queryResp = statement.executeQuery();
+
+                    // Sending success response to Client
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new RegisterMessage(RegisterStatus.REGISTER_SUCCESS, null, "Auth Server"));
+                    return;
+                }
+
+                else {
+                    // User already exists, sending failure response to Client
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, "Auth Server"));
+                    return;
+                }
+
+            } catch (SQLException e) {
+                e.printStackTrace();
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, "Auth Server"));
+                return;
+            }
+            finally{
+                query = null;
+                statement = null;
+                queryResp = null;
+            }
+        }
+
+        else
+
+        {
+            // Invalid login request
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, "Auth Server"));
+            return;
+        }
     }
 
     /**
@@ -73,6 +180,8 @@ final public class AuthServerHandler implements Runnable {
      *                <p>
      *                Message Specs
      * @receivedInstructionIDs: LOGIN_REQUEST
+     * @sentInstructionIDs: LOGIN_SUCCESS, LOGIN_FAIL
+     * @receivedHeaders: pass:Password
      * @sentHeaders: authToken:authToken (null if LOGIN_FAIL)
      */
     private void logInUser(LoginMessage request) {

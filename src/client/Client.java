@@ -36,6 +36,44 @@ final public class Client {
      * 
      *             <p>
      *             Message Specs
+     * @sentInstructionIDs: REGISTER_REQUEST
+     * @expectedInstructionIDs: REGISTER_SUCCESS, REGISTER_FAIL
+     * @sentHeaders: pass:Password
+     */
+
+    public boolean register(String name, String pass) {
+        // Sending Register Message with Username and Password as Headers
+        HashMap<String, String> requestHeaders = new HashMap<String, String>();
+        requestHeaders.put("pass", pass);
+
+        if (!MessageHelpers.sendMessageTo(authSocket,
+                new LoginMessage(LoginStatus.LOGIN_REQUEST, requestHeaders, name)))
+            return false;
+        requestHeaders = null;
+
+        // Reading AuthServer's response
+        Message response = MessageHelpers.receiveMessageFrom(authSocket);
+        RegisterMessage castResponse = (RegisterMessage) response;
+        response = null;
+
+        // Parsing AuthServer's response
+        if (castResponse.getStatus() != RegisterStatus.REGISTER_SUCCESS)
+            return false;
+
+        // Logging in user
+        if(logIn(name, pass) == false)
+            System.err.println("Critical ERROR. User registered but couldn't login!");
+
+        return true;
+    }
+
+    /**
+     * @param name Client Username
+     * @param pass Client Password
+     * 
+     * 
+     *             <p>
+     *             Message Specs
      * @sentInstructionIDs: LOGIN_REQUEST
      * @expectedInstructionIDs: LOGIN_SUCCESS, LOGIN_FAIL
      * @sentHeaders: pass:password
