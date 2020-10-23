@@ -127,13 +127,12 @@ final public class AuthServerHandler implements Runnable {
                     // Username is available
                     // Create new user in client DB
                     query = "INSERT INTO client(username, password) VALUES(?,?);";
-                    queryResp = null;
 
                     // Create and execute query
                     statement = connection.prepareStatement(query);
                     statement.setString(1, request.getSender());
                     statement.setString(2, request.getHeaders().get("pass"));
-                    queryResp = statement.executeQuery();
+                    statement.executeUpdate();
 
                     // Sending success response to Client
                     MessageHelpers.sendMessageTo(this.clientSocket,
@@ -153,11 +152,9 @@ final public class AuthServerHandler implements Runnable {
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, "Auth Server"));
                 return;
-            }
-            finally{
+            } finally {
                 query = null;
                 statement = null;
-                queryResp = null;
             }
         }
 
