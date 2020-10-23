@@ -224,9 +224,9 @@ final public class AuthServerHandler implements Runnable {
                     if (password.equals(request.getHeaders().get("pass"))) {
                         // Password entered by the user matches with the password in the database
                         // Updating user's login status
-                        String updateQuery = "UPDATE client SET login_status = ONLINE WHERE username = ?;";
+                        String updateQuery = "UPDATE client SET login_status = 'ONLINE' WHERE username = ?;";
                         PreparedStatement updateStatus = connection.prepareStatement(updateQuery);
-                        updateStatus.setString(2, request.getSender());
+                        updateStatus.setString(1, request.getSender());
                         updateStatus.executeUpdate();
 
                         // Sending success response to client
