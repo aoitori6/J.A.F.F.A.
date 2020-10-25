@@ -31,7 +31,7 @@ public class AuthServer {
         // Thread Pool to allocate Tasks to
         threadPool = Executors.newFixedThreadPool(NTHREADS);
 
-        AuthServer.clientDB = DriverManager.getConnection(url, "root", "root");
+        AuthServer.clientDB = DriverManager.getConnection(url, "root", "85246");
 
     }
 

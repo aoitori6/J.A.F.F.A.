@@ -1,5 +1,6 @@
 package client;
 
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Scanner;
 
@@ -24,7 +25,7 @@ final public class InterfaceClient {
 
         /*
          * TODO: Check valid File Paths, Check existing Files, Check File Path for Linux
-         */
+        */
 
         // Get File Code
         System.out.println("Enter File Code");
@@ -40,9 +41,34 @@ final public class InterfaceClient {
 
         System.out.println("Querying Server");
         if (client.downloadFile(code, Paths.get(savePath)) == DownloadStatus.DOWNLOAD_SUCCESS)
-            System.out.println("File Downloaded Succesfully");
+            System.out.println("File Downloaded Successfully");
         else
             System.out.println("ERROR. Failed to Download File");
+    }
+
+    private static void uploadFile() {
+        
+
+        // Get File Path
+        System.out.println("Enter Path to the File (Absolute Path) (Currently Windows Only)");
+        String filePath = conInput.nextLine();
+
+        // Check If File Exists
+        if (Files.exists(Paths.get(filePath)) == false) {
+            System.out.println("ERROR. Invalid File Path!");
+            return;
+        }
+
+        System.out.println("Querying Server");
+
+        // Reciving The Code, Code Will Be null If Uploading Failed
+        String code = client.uploadFile(Paths.get(filePath));
+        if(code != null) {
+            System.out.println("File Uploaded Successfully");
+            System.out.println("Code: " + code);
+        }
+        else 
+            System.out.println("ERROR. Failed to Upload File");
     }
 
     // Main User Interface
@@ -90,7 +116,9 @@ final public class InterfaceClient {
                 case 1:
                     downloadFile();
                     break;
-
+                case 2: 
+                    uploadFile();
+                    break;
                 case 5:
                     break menu;
                 default:
