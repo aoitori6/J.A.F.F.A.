@@ -1,5 +1,5 @@
 package statuscodes;
 
 public enum RequestKind {
-    Login, Register, Download, Upload, Delete, LocateServer, Error,
+    Login, Register, Download, Upload, Delete, LocateServer, FileDetails, Error,
 }

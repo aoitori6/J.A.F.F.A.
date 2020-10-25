@@ -7,6 +7,14 @@ public class FileInfo {
     private int downloadsRemaining;
     private String deletionTimestamp;
 
+    public FileInfo(String name, String code, String uploader, int downloadsRemaining, String deletionTimestamp) {
+        this.name = name;
+        this.code = code;
+        this.uploader = uploader;
+        this.downloadsRemaining = downloadsRemaining;
+        this.deletionTimestamp = deletionTimestamp;
+    }
+
     public String getName() {
         return this.name;
     }

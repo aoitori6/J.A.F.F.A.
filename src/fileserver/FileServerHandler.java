@@ -6,17 +6,22 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
 
+import adminclient.FileInfo;
 import message.*;
 import statuscodes.DeleteStatus;
 import statuscodes.DownloadStatus;
+import statuscodes.FileDetailsStatus;
 import statuscodes.UploadStatus;
 
 final public class FileServerHandler implements Runnable {
@@ -52,6 +57,9 @@ final public class FileServerHandler implements Runnable {
                 break;
             case Delete:
                 deleteFile((DeleteMessage) request);
+                break;
+            case FileDetails:
+                getAllFileData((FileDetailsMessage) request);
                 break;
             default:
                 break;
@@ -297,11 +305,11 @@ final public class FileServerHandler implements Runnable {
             String statement;
             PreparedStatement addFile = null;
             try {
-                statement = "INSERT INTO file(code, uploader, path) VALUES(?,?,?)";
+                statement = "INSERT INTO file(code, uploader, filename) VALUES(?,?,?)";
                 addFile = fileDB.prepareStatement(statement);
                 addFile.setString(1, code);
                 addFile.setString(2, request.getSender());
-                addFile.setString(3, fileFolder.toFile().getParent());
+                addFile.setString(3, fileFolder.toFile().getName());
                 addFile.executeUpdate();
             } catch (Exception e) {
                 e.printStackTrace();
@@ -398,6 +406,69 @@ final public class FileServerHandler implements Runnable {
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_INVALID, null,
                     "File Server", "tempServerKey", request.checkAdmin()));
+        }
+    }
+
+    /**
+     * Takes a FileDetailsMessage object from the Client and first verifies if the
+     * Client is authorized. If so, it queries the associated File DB for a list of
+     * files and their details, and sends the same to the Client. A timestamp is
+     * sent along with the details, and the results are accurrate to the timestamp.
+     * 
+     * @param request FileDetailsMessage received from the Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: FILEDETAILS_REQUEST
+     * @sentInstructionIDs: FILEDETAILS_SUCCESS, FILEDETAILS_FAIL
+     * @sentHeaders: count:FileCount, timestamp:ServerTimestamp (at which time data
+     *               was feteched)
+     */
+    private void getAllFileData(FileDetailsMessage request) {
+        if (request.getStatus() != FileDetailsStatus.FILEDETAILS_REQUEST) {
+            // TODO: Check authCode vs Auth DB to ensure Client is an Admin
+
+            ArrayList<FileInfo> currFileInfo = new ArrayList<FileInfo>(0);
+
+            // Querying associated File DB
+            try (ResultSet queryResp = fileDB.createStatement()
+                    .executeQuery("SELECT * FROM files WHERE deletable = FALSE");) {
+
+                // Parsing Result
+                while (queryResp.next()) {
+                    currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
+                            queryResp.getString("uploader"),
+                            Integer.parseInt(queryResp.getString("downloads_remaining")),
+                            queryResp.getString("deletion_timestamp")));
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+                return;
+            }
+
+            try (ObjectOutputStream toClient = new ObjectOutputStream(this.clientSocket.getOutputStream());) {
+                // Sending Start message to Client
+                HashMap<String, String> headers = new HashMap<String, String>();
+                headers.put("code", String.valueOf(currFileInfo.size()));
+                headers.put("timestamp", new Date().toString());
+                MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
+                        FileDetailsStatus.FILEDETAILS_START, headers, "File Server", "tempAuthToken"));
+                headers = null;
+
+                // Beginning transfer of details
+                for (FileInfo temp : currFileInfo)
+                    toClient.writeObject(temp);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            } finally {
+                currFileInfo = null;
+            }
+
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "File Server", "tempServerKey"));
         }
     }
 
