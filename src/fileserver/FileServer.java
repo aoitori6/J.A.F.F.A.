@@ -4,11 +4,14 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.sql.*;
 
 public class FileServer {
     private final static byte NTHREADS = 100;
     private final ExecutorService threadPool;
+    private final ScheduledExecutorService fileCleanup;
     private final ServerSocket fileServer;
 
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
@@ -29,6 +32,10 @@ public class FileServer {
         // Thread Pool to allocate Tasks to
         threadPool = Executors.newFixedThreadPool(NTHREADS);
 
+        // Scheduled Executor Service that will be responsible for cleaning up deleted
+        // files
+        fileCleanup = Executors.newSingleThreadScheduledExecutor();
+
         // Initialize connection to File Database
         // TODO: Get this DB from admin; Remove hardcoding
         FileServer.fileDB = DriverManager.getConnection(url, "root", "85246");
@@ -38,6 +45,15 @@ public class FileServer {
     public void start() throws IOException, SQLException {
         if (fileServer.equals(null))
             throw new NullPointerException("Error. File Server was not initialized!");
+
+        // Start File Cleanup thread
+        try {
+            fileCleanup.scheduleWithFixedDelay(new DeletionService(), 0, 20, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Try to restart the Cleanup thread
+            fileCleanup.scheduleWithFixedDelay(new DeletionService(), 0, 20, TimeUnit.MINUTES);
+        }
 
         // Begin listening for new Socket connections
         while (!threadPool.isShutdown()) {

@@ -25,7 +25,7 @@ final public class InterfaceClient {
 
         /*
          * TODO: Check valid File Paths, Check existing Files, Check File Path for Linux
-        */
+         */
 
         // Get File Code
         System.out.println("Enter File Code");
@@ -47,7 +47,6 @@ final public class InterfaceClient {
     }
 
     private static void uploadFile() {
-        
 
         // Get File Path
         System.out.println("Enter Path to the File (Absolute Path) (Currently Windows Only)");
@@ -63,11 +62,10 @@ final public class InterfaceClient {
 
         // Reciving The Code, Code Will Be null If Uploading Failed
         String code = client.uploadFile(Paths.get(filePath));
-        if(code != null) {
+        if (code != null) {
             System.out.println("File Uploaded Successfully");
             System.out.println("Code: " + code);
-        }
-        else 
+        } else
             System.out.println("ERROR. Failed to Upload File");
     }
 
@@ -116,7 +114,7 @@ final public class InterfaceClient {
                 case 1:
                     downloadFile();
                     break;
-                case 2: 
+                case 2:
                     uploadFile();
                     break;
                 case 5:

@@ -62,7 +62,7 @@ final public class Client {
             return false;
 
         // Logging in user
-        if(logIn(name, pass) == false)
+        if (logIn(name, pass) == false)
             System.err.println("Critical ERROR. User registered but couldn't login!");
 
         return true;
@@ -241,8 +241,7 @@ final public class Client {
     }
 
     /**
-     * @param filePath     Path To The File To Upload
-     * 
+     * @param filePath Path To The File To Upload
      * 
      *                 <p>
      *                 Message Specs
@@ -252,7 +251,7 @@ final public class Client {
      * @expectedHeaders: code:code
      */
 
-    public String uploadFile (Path filePath) {
+    public String uploadFile(Path filePath) {
         // Send a LocateServerStatus to the Central Server
         // with isUploadRequest set to true
 
@@ -287,14 +286,15 @@ final public class Client {
         Message response = MessageHelpers.receiveMessageFrom(fileSocket);
         UploadMessage castResponse = (UploadMessage) response;
         response = null;
-        
-        if(castResponse.getStatus() != UploadStatus.UPLOAD_START)
+
+        if (castResponse.getStatus() != UploadStatus.UPLOAD_START)
             return null;
-        
+        castResponse = null;
 
         // Start Uploading the file
         // TODO: Set and fine tune buffer size
         // Temporary Buffer Size in Bytes
+
         int buffSize = 1_048_576;
         byte[] writeBuffer = new byte[buffSize];
         BufferedInputStream fileOnClient = null;
@@ -314,12 +314,13 @@ final public class Client {
 
             // File successfully uploaded
             System.err.println("LOG: Finishing File Upload");
+
         } catch (IOException e) {
             e.printStackTrace();
             return null;
         } finally {
             writeBuffer = null;
-            try{
+            try {
                 fileOnClient.close();
                 this.fileSocket.close();
                 fileToServer.close();
@@ -330,7 +331,7 @@ final public class Client {
 
         // Returning the Code if Everthing was successful
         return castResponse.getHeaders().get("code").toString();
-    
+
     }
 
 }

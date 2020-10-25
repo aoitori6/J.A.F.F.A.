@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Random;
 
 import message.*;
+import statuscodes.DeleteStatus;
 import statuscodes.DownloadStatus;
 import statuscodes.UploadStatus;
 
@@ -48,6 +49,9 @@ final public class FileServerHandler implements Runnable {
                 break;
             case Upload:
                 serverUpload((UploadMessage) request);
+                break;
+            case Delete:
+                deleteFile((DeleteMessage) request);
                 break;
             default:
                 break;
@@ -144,7 +148,7 @@ final public class FileServerHandler implements Runnable {
             // Prep for File transfer
             int buffSize = 1_048_576;
             byte[] writeBuffer = new byte[buffSize];
-            BufferedInputStream fileFromDB;
+            BufferedInputStream fileFromDB = null;
             BufferedOutputStream fileToClient = null;
 
             try {
@@ -168,21 +172,20 @@ final public class FileServerHandler implements Runnable {
                 return;
             } finally {
                 writeBuffer = null;
-                fileFromDB = null;
                 try {
+                    fileFromDB.close();
                     fileToClient.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-                ;
             }
         }
 
-        // else {
-        //     headers.put("fileName", null);
-        //     MessageHelpers.sendMessageTo(this.clientSocket,
-        //             new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
-        // }
+        else {
+            headers.put("fileName", null);
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
+        }
 
         headers = null;
     }
@@ -220,7 +223,7 @@ final public class FileServerHandler implements Runnable {
      * File DB and a unique, sharable code is generated and sent back, otherwise an
      * error Message is returned.
      * 
-     * @param request Dow received from Client
+     * @param request UploadMessage received from Client
      * 
      *                <p>
      *                Message Specs
@@ -255,24 +258,25 @@ final public class FileServerHandler implements Runnable {
             // Code generated successfully, signal Client to begin transfer
             MessageHelpers.sendMessageTo(this.clientSocket,
                     new UploadMessage(UploadStatus.UPLOAD_START, headers, "File Server", "tempServerKey"));
+            headers = null;
 
             // Prep for File transfer
             int buffSize = 1_048_576;
             byte[] readBuffer = new byte[buffSize];
             BufferedOutputStream fileToDB = null;
             BufferedInputStream fileFromClient = null;
+
             try {
                 // Begin connecting to file Server and establish read/write Streams
                 fileToDB = new BufferedOutputStream(new FileOutputStream(fileFolder.toString()));
                 fileFromClient = new BufferedInputStream(this.clientSocket.getInputStream());
+
                 // Temporary var to keep track of read Bytes
                 int _temp_c;
                 while ((_temp_c = fileFromClient.read(readBuffer, 0, readBuffer.length)) != -1) {
                     fileToDB.write(readBuffer, 0, _temp_c);
                     fileToDB.flush();
                 }
-                // File successfully uploaded
-                fileFromClient.close();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -283,16 +287,17 @@ final public class FileServerHandler implements Runnable {
                 readBuffer = null;
                 try {
                     fileToDB.close();
+                    fileFromClient.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-                fileFromClient = null;
             }
+
             // If file was successfully uploaded, add an entry to the File DB
             String statement;
             PreparedStatement addFile = null;
             try {
-                statement = "INSERT INTO file(Code, Uploader, Path) VALUES(?,?,?);";
+                statement = "INSERT INTO file(code, uploader, path) VALUES(?,?,?)";
                 addFile = fileDB.prepareStatement(statement);
                 addFile.setString(1, code);
                 addFile.setString(2, request.getSender());
@@ -304,9 +309,8 @@ final public class FileServerHandler implements Runnable {
                         new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey"));
                 return;
             } finally {
-                statement = null;
                 try {
-                addFile.close();
+                    addFile.close();
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
@@ -319,5 +323,82 @@ final public class FileServerHandler implements Runnable {
         }
 
     }
-    
+
+    /**
+     * Helper function for deleteFile. Queries the associated File DB to see if the
+     * supplied File Code exists, and if the requester is allowed to delete it, it
+     * marks the file for deletion in the DB. This method serializes access to the
+     * File DB, and thus ensures that a given File is only deleted once.
+     * 
+     * @param fileDB  File Database to check against
+     * @param code    File Code to be deleted
+     * @param name    Name of the Client who requested deletion
+     * @param isAdmin Whether the Client is an admin
+     * @return
+     */
+    private static synchronized boolean deleteFromDB(Connection fileDB, String code, String name, boolean isAdmin) {
+        PreparedStatement update;
+        try {
+            // Preparing Statement
+            if (isAdmin) {
+                update = fileDB.prepareStatement("UPDATE file SET deletable = TRUE WHERE code = ?");
+                update.setString(1, code);
+            } else {
+                update = fileDB.prepareStatement("UPDATE file SET deletable = TRUE WHERE code = ? AND uploader = ?");
+                update.setString(1, code);
+                update.setString(2, name);
+            }
+
+            // Executing Query and checking responses
+            if (update.executeUpdate() == 1)
+                return true;
+            else
+                return false;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Takes a DeleteMesage object from the Client and queries the DB to see if the
+     * File exists, and if the Client can delete it. If the query is successful, the
+     * File is deleted from both the File DB and the associated File System and the
+     * Client is notified. If the query fails, then the Client is notified about the
+     * reason for the same.
+     * 
+     * <p>
+     * This method does not cancel any active downloads on the file to be deleted.
+     * It only guarantees that the file will be marked as Deletable, and it is up to
+     * other methods to respect that field until actual File deletion occurs. Files
+     * present on the File System but not in the DB will be scheduled for deletion
+     * by another listener.
+     * 
+     * @param request DeleteMessage received from Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: DELETE_REQUEST
+     * @sentInstructionIDs: DELETE_SUCCESS, DELETE_FAIL, DELETE_INVALID
+     * @sentHeaders: filecode:FileCode
+     */
+
+    private void deleteFile(DeleteMessage request) {
+        if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
+
+            // Attempt deletion from the File DB
+            if (deleteFromDB(this.fileDB, request.getHeaders().get("code"), request.getSender(), request.checkAdmin()))
+                MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null,
+                        "File Server", "tempServerKey", request.checkAdmin()));
+            else {
+                MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_FAIL, null,
+                        "File Server", "tempServerKey", request.checkAdmin()));
+            }
+
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_INVALID, null,
+                    "File Server", "tempServerKey", request.checkAdmin()));
+        }
+    }
+
 }
