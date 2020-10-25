@@ -289,7 +289,6 @@ final public class Client {
 
         if (castResponse.getStatus() != UploadStatus.UPLOAD_START)
             return null;
-        castResponse = null;
 
         // Start Uploading the file
         // TODO: Set and fine tune buffer size
