@@ -333,4 +333,60 @@ public class Client {
 
     }
 
+    public boolean deleteFileWrapper(String code) {
+        boolean isAdmin = false;
+
+        return deleteFile(code, isAdmin);
+    }
+
+    /**
+     * @param code    File Code
+     * @param isAdmin Is User Admin or Not
+     * 
+     *                <p>
+     *                Message Specs
+     * @sentInstructionIDs: DELETE_REQUEST
+     * @expectedInstructionIDs: DELETE_SUCCESS, DELETE_FAIL, DELETE_INVALID
+     * @sentHeaders: code:code
+     */
+
+    private boolean deleteFile(String code, boolean isAdmin) {
+
+        // Expect addr:ServerAddress, port:ServerPort if Successful
+        HashMap<String, String> fileServerAddress;
+        try {
+            fileServerAddress = fetchServerAddress(
+                    new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+
+        // If valid Address returned, attempt to connect to FileServer
+        try {
+            this.fileSocket = new Socket(fileServerAddress.get("addr"),
+                    Integer.parseInt(fileServerAddress.get("port")));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+
+        // Send a DeleteRequest to the File Server
+        HashMap<String, String> requestHeaders = new HashMap<String, String>();
+        requestHeaders.put("code", code);
+        if (!MessageHelpers.sendMessageTo(fileSocket,
+                new DeleteMessage(DeleteStatus.DELETE_REQUEST, requestHeaders, this.name, this.authToken, isAdmin)))
+            return false;
+
+        // Response From the Server
+        Message response = MessageHelpers.receiveMessageFrom(fileSocket);
+        DeleteMessage castResponse = (DeleteMessage) response;
+        response = null;
+
+        if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS)
+            return false;
+        else
+            return true;
+    }
+
 }

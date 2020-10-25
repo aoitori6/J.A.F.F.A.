@@ -99,6 +99,18 @@ final public class InterfaceClient {
             System.out.println("ERROR. Failed to Upload File");
     }
 
+    private static void deleteFile() {
+
+        // Get File Code
+        System.out.println("Enter File Code");
+        String code = conInput.nextLine();
+
+        if (client.deleteFileWrapper(code))
+            System.out.println("File Deleted Successfully");
+        else
+            System.out.println("ERROR. Failed to Delete File");
+    }
+
     // Main User Interface
     public static void main(String[] args) {
         byte choice;
@@ -157,6 +169,9 @@ final public class InterfaceClient {
                 case 2:
                     uploadFile();
                     break;
+                case 3:
+                    deleteFile();
+                    break;
                 case 5:
                     break menu;
                 default:
@@ -167,4 +182,4 @@ final public class InterfaceClient {
         return;
 
     }
-}   
+}
