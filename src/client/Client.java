@@ -13,13 +13,13 @@ import java.util.HashMap;
 import message.*;
 import statuscodes.*;
 
-final public class Client {
+public class Client {
 
-    private String name;
-    private Socket authSocket;
+    protected String name;
+    protected Socket authSocket;
 
-    private Socket fileSocket;
-    private String authToken;
+    protected Socket fileSocket;
+    protected String authToken;
 
     public Client(String address, int port) {
         try {
@@ -120,7 +120,7 @@ final public class Client {
      * @expectedHeaders: addr:ServerAddress, port:ServerPort (both null if no File
      *                   Server found)
      */
-    private HashMap<String, String> fetchServerAddress(LocateServerMessage request) throws NullPointerException {
+    protected HashMap<String, String> fetchServerAddress(LocateServerMessage request) throws NullPointerException {
 
         // Sending LocateServer request
         if (!MessageHelpers.sendMessageTo(authSocket, request))
