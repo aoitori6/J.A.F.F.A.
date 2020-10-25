@@ -21,6 +21,36 @@ final public class InterfaceClient {
     // Client Object tied with User Interface
     static Client client = null;
 
+    private static boolean register() {
+
+        System.out.println("Enter Username");
+        String username = conInput.nextLine();
+
+        System.out.println("Enter Password");
+        String password = conInput.nextLine();
+
+        System.out.println("Confirm Passwrd");
+        String confirmPassword = conInput.nextLine();
+
+        if (!password.equals(confirmPassword)) {
+            System.out.println("Passwords do not match");
+            return false;
+        }
+
+        return client.register(username, password);
+    }
+
+    private static boolean logIn() {
+
+        System.out.println("Enter Username");
+        String username = conInput.nextLine();
+
+        System.out.println("Enter Password");
+        String password = conInput.nextLine();
+
+        return client.logIn(username, password);
+    }
+
     private static void downloadFile() {
 
         /*
@@ -88,17 +118,27 @@ final public class InterfaceClient {
         if (client == null)
             return;
 
-        // Getting Account Details
-        System.out.println("Enter Username");
-        String username = conInput.nextLine();
-
-        System.out.println("Enter Password");
-        String password = conInput.nextLine();
-
         // Authenticating Client
         // TODO: Handle Bad Logins
-        if (client.logIn(username, password) == false)
-            return;
+        auth: while (true) {
+            System.out.println("1. Register");
+            System.out.println("2. Login");
+            choice = conInput.nextByte();
+            conInput.nextLine();
+
+            switch (choice) {
+                case 1:
+                    if (register())
+                        break auth;
+                    break;
+                case 2:
+                    if (logIn())
+                        break auth;
+                    break;
+                default:
+                    System.out.println("ERROR. Invalid Choice");
+            }
+        }
 
         // Main Menu
         menu: while (true) {

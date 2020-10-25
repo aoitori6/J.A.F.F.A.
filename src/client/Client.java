@@ -48,7 +48,7 @@ public class Client {
         requestHeaders.put("pass", pass);
 
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new LoginMessage(LoginStatus.LOGIN_REQUEST, requestHeaders, name)))
+                new RegisterMessage(RegisterStatus.REGISTER_REQUEST, requestHeaders, name)))
             return false;
         requestHeaders = null;
 
