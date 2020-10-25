@@ -178,11 +178,11 @@ final public class FileServerHandler implements Runnable {
             }
         }
 
-        // else {
-        //     headers.put("fileName", null);
-        //     MessageHelpers.sendMessageTo(this.clientSocket,
-        //             new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
-        // }
+        else {
+            headers.put("fileName", null);
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
+        }
 
         headers = null;
     }
