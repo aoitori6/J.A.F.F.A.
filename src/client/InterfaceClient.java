@@ -29,7 +29,7 @@ final public class InterfaceClient {
         System.out.println("Enter Password");
         String password = conInput.nextLine();
 
-        System.out.println("Confirm Passwrd");
+        System.out.println("Confirm Password");
         String confirmPassword = conInput.nextLine();
 
         if (!password.equals(confirmPassword)) {
@@ -130,56 +130,65 @@ final public class InterfaceClient {
         if (client == null)
             return;
 
-        // Authenticating Client
-        // TODO: Handle Bad Logins
-        auth: while (true) {
-            System.out.println("1. Register");
-            System.out.println("2. Login");
-            choice = conInput.nextByte();
-            conInput.nextLine();
+        program: while (true) {
+            // Authenticating Client
+            // TODO: Handle Bad Logins
+            auth: while (true) {
+                System.out.println("1. Register");
+                System.out.println("2. Login");
+                System.out.println("3. Exit");
+                choice = conInput.nextByte();
+                conInput.nextLine();
 
-            switch (choice) {
-                case 1:
-                    if (register())
-                        break auth;
-                    break;
-                case 2:
-                    if (logIn())
-                        break auth;
-                    break;
-                default:
-                    System.out.println("ERROR. Invalid Choice");
+                switch (choice) {
+                    case 1:
+                        if (register())
+                            break auth;
+                        break;
+                    case 2:
+                        if (logIn())
+                            break auth;
+                        break;
+                    case 3:
+                        break program;
+                    default:
+                        System.out.println("ERROR. Invalid Choice");
+                }
+            }
+
+            // Main Menu
+            menu: while (true) {
+                System.out.println("1. Download File");
+                System.out.println("2. Upload File");
+                System.out.println("3. Delete File");
+                System.out.println("4. Logout");
+                System.out.println("Enter your Choice");
+                choice = conInput.nextByte();
+                conInput.nextLine();
+
+                switch (choice) {
+                    case 1:
+                        downloadFile();
+                        break;
+                    case 2:
+                        uploadFile();
+                        break;
+                    case 3:
+                        deleteFile();
+                        break;
+                    case 4:
+                        if (client.logout()) {
+                            System.out.println("Logged Out");
+                            break menu;
+                        } else {
+                            System.out.println("Logging Out Failed");
+                            break;
+                        }
+                    default:
+                        System.out.println("ERROR. Invalid Choice");
+                }
             }
         }
-
-        // Main Menu
-        menu: while (true) {
-            System.out.println("1. Download File");
-            System.out.println("2. Upload File");
-            System.out.println("3. Delete File");
-            System.out.println("5. Logout");
-            System.out.println("Enter your Choice");
-            choice = conInput.nextByte();
-            conInput.nextLine();
-
-            switch (choice) {
-                case 1:
-                    downloadFile();
-                    break;
-                case 2:
-                    uploadFile();
-                    break;
-                case 3:
-                    deleteFile();
-                    break;
-                case 5:
-                    break menu;
-                default:
-                    System.out.println("ERROR. Invalid Choice");
-            }
-        }
-
         return;
-
     }
 }

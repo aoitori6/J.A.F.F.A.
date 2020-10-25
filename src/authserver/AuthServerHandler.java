@@ -12,6 +12,7 @@ import message.*;
 import statuscodes.ErrorStatus;
 import statuscodes.LocateServerStatus;
 import statuscodes.LoginStatus;
+import statuscodes.LogoutStatus;
 import statuscodes.RegisterStatus;
 
 final public class AuthServerHandler implements Runnable {
@@ -46,6 +47,9 @@ final public class AuthServerHandler implements Runnable {
                     break;
                 case Register:
                     registerUser((RegisterMessage) request);
+                    break;
+                case Logout:
+                    logoutUser((LogoutMessage) request);
                     break;
                 default:
                     generateErrorMessage(request);
@@ -262,6 +266,55 @@ final public class AuthServerHandler implements Runnable {
         }
 
         headers = null;
+    }
+
+    /**
+     * Takes a LogoutMessage object from the Client and tries to log the 
+     * user out
+     * 
+     * @param request LogoutMessage received from Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @receivedInstructionIDs: LOGOUT_REQUEST
+     * @sentInstructionIDs: LOGOUT_SUCCESS, LOGOUT_FAIL
+     */
+
+    private void logoutUser(LogoutMessage request) {
+
+        // Check If Valid Logout request
+        if (request.getStatus() == LogoutStatus.LOGOUT_REQUEST) {
+
+            String updateQuery;
+            PreparedStatement updateStatus;
+            try {
+                // Updating the client's login status to OFFLINE
+                updateQuery = "UPDATE client SET login_status = 'OFFLINE' WHERE username = ?;";
+                updateStatus = connection.prepareStatement(updateQuery);
+                updateStatus.setString(1, request.getSender());
+                updateStatus.executeUpdate();
+
+                // Sending success response to client
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new LogoutMessage(LogoutStatus.LOGOUT_SUCCESS, null, "Auth Server"));
+            } catch (SQLException e) {
+                e.printStackTrace();
+                // Sending failure response to the client
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new LogoutMessage(LogoutStatus.LOGOUT_FAIL, null, "Auth Server"));
+                return;
+            } finally {
+                updateQuery = null;
+                updateStatus = null;
+            }
+        }
+
+        else {
+            // Invalid logout request, Sending failure response to the client
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new LogoutMessage(LogoutStatus.LOGOUT_FAIL, null, "Auth Server"));
+            return;
+        }
     }
 
     /**
