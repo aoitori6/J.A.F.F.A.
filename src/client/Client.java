@@ -110,6 +110,33 @@ public class Client {
 
     /**
      * 
+     *              <p>
+     *              Message Specs
+     * 
+     * @sentInstructionIDs: LOGOUT_REQUEST
+     * @expectedInstructionIDs: LOGOUT_SUCCESS, LOGOUT_FAIL
+     */
+
+    public boolean logout() {
+
+        // Sending Logout Message to AuthServer
+        if (!MessageHelpers.sendMessageTo(authSocket, new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, null, name)))
+            return false;
+
+        // Reading AuthServer's response
+        Message response = MessageHelpers.receiveMessageFrom(authSocket);
+        LogoutMessage castResponse = (LogoutMessage) response;
+        response = null;
+
+        // Parsing AuthServer's response
+        if (castResponse.getStatus() != LogoutStatus.LOGOUT_SUCCESS)
+            return false;
+        else
+            return true;
+    }
+
+    /**
+     * 
      * @param request Kind of Server required
      * @return HashMap containing addr:ServerAddress, port:ServerPort pairs
      * @throws NullPointerException: If no File Server found
