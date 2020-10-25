@@ -2,6 +2,7 @@ package client;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.Socket;
@@ -238,4 +239,98 @@ final public class Client {
         }
 
     }
+
+    /**
+     * @param filePath     Path To The File To Upload
+     * 
+     * 
+     *                 <p>
+     *                 Message Specs
+     * @sentInstructionIDs: UPLOAD_REQUEST
+     * @expectedInstructionIDs: UPLOAD_START, UPLOAD_SUCCESS, UPLOAD_FAIL
+     * @sentHeaders: filename:FileName
+     * @expectedHeaders: code:code
+     */
+
+    public String uploadFile (Path filePath) {
+        // Send a LocateServerStatus to the Central Server
+        // with isUploadRequest set to true
+
+        // Expect addr:ServerAddress, port:ServerPort if Successful
+        HashMap<String, String> fileServerAddress;
+        try {
+            fileServerAddress = fetchServerAddress(
+                    new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        // If valid Address returned, attempt to connect to FileServer
+        try {
+            this.fileSocket = new Socket(fileServerAddress.get("addr"),
+                    Integer.parseInt(fileServerAddress.get("port")));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        // Send a UploadRequest to the File Server
+        // Expect UPLOAD_START if all is successful
+        HashMap<String, String> requestHeaders = new HashMap<String, String>();
+        requestHeaders.put("filename", filePath.getFileName().toString());
+        if (!MessageHelpers.sendMessageTo(fileSocket,
+                new UploadMessage(UploadStatus.UPLOAD_REQUEST, requestHeaders, this.name, this.authToken)))
+            return null;
+
+        // Parse Response
+        Message response = MessageHelpers.receiveMessageFrom(fileSocket);
+        UploadMessage castResponse = (UploadMessage) response;
+        response = null;
+        
+        if(castResponse.getStatus() != UploadStatus.UPLOAD_START)
+            return null;
+        
+
+        // Start Uploading the file
+        // TODO: Set and fine tune buffer size
+        // Temporary Buffer Size in Bytes
+        int buffSize = 1_048_576;
+        byte[] writeBuffer = new byte[buffSize];
+        BufferedInputStream fileOnClient = null;
+        BufferedOutputStream fileToServer = null;
+        System.err.println("LOG: Beginning File Upload");
+        try {
+            // Begin connecting to file Server and establish read/write Streams
+            fileOnClient = new BufferedInputStream(new FileInputStream(filePath.toString()));
+            fileToServer = new BufferedOutputStream(this.fileSocket.getOutputStream());
+
+            // Temporary var to keep track of read Bytes
+            int _temp_c;
+            while ((_temp_c = fileOnClient.read(writeBuffer, 0, writeBuffer.length)) != -1) {
+                fileToServer.write(writeBuffer, 0, _temp_c);
+                fileToServer.flush();
+            }
+
+            // File successfully uploaded
+            System.err.println("LOG: Finishing File Upload");
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        } finally {
+            writeBuffer = null;
+            try{
+                fileOnClient.close();
+                this.fileSocket.close();
+                fileToServer.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        // Returning the Code if Everthing was successful
+        return castResponse.getHeaders().get("code").toString();
+    
+    }
+
 }

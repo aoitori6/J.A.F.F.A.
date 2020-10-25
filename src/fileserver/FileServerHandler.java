@@ -81,7 +81,7 @@ final public class FileServerHandler implements Runnable {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
 
             // First check fileDB if Code exists
-            String query = "SELECT * FROM FILE WHERE CODE = ?;";
+            String query = "SELECT * FROM FILE WHERE Code = ?;";
             PreparedStatement checkCode;
             ResultSet queryResp;
             try {
@@ -145,7 +145,7 @@ final public class FileServerHandler implements Runnable {
             int buffSize = 1_048_576;
             byte[] writeBuffer = new byte[buffSize];
             BufferedInputStream fileFromDB;
-            BufferedOutputStream fileToClient;
+            BufferedOutputStream fileToClient = null;
 
             try {
                 // Begin connecting to file Server and establish read/write Streams
@@ -169,15 +169,20 @@ final public class FileServerHandler implements Runnable {
             } finally {
                 writeBuffer = null;
                 fileFromDB = null;
-                fileToClient = null;
+                try {
+                    fileToClient.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                ;
             }
         }
 
-        else {
-            headers.put("fileName", null);
-            MessageHelpers.sendMessageTo(this.clientSocket,
-                    new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
-        }
+        // else {
+        //     headers.put("fileName", null);
+        //     MessageHelpers.sendMessageTo(this.clientSocket,
+        //             new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
+        // }
 
         headers = null;
     }
@@ -231,9 +236,10 @@ final public class FileServerHandler implements Runnable {
 
             // First generate a Path to the upload folder
             Path fileFolder;
+            String code;
             try {
                 fileFolder = createFileLocation();
-
+                code = fileFolder.getFileName().toString();
                 // Create the file itself in the Folder
                 fileFolder = Files.createFile(fileFolder.resolve(request.getHeaders().get("filename")));
             } catch (IOException e1) {
@@ -243,28 +249,28 @@ final public class FileServerHandler implements Runnable {
                 return;
             }
 
+            HashMap<String, String> headers = new HashMap<String, String>();
+            headers.put("code", code);
+
             // Code generated successfully, signal Client to begin transfer
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new UploadMessage(UploadStatus.UPLOAD_START, null, "File Server", "tempServerKey"));
+                    new UploadMessage(UploadStatus.UPLOAD_START, headers, "File Server", "tempServerKey"));
 
             // Prep for File transfer
             int buffSize = 1_048_576;
             byte[] readBuffer = new byte[buffSize];
             BufferedOutputStream fileToDB = null;
             BufferedInputStream fileFromClient = null;
-
             try {
                 // Begin connecting to file Server and establish read/write Streams
                 fileToDB = new BufferedOutputStream(new FileOutputStream(fileFolder.toString()));
-                fileFromClient = new BufferedInputStream(clientSocket.getInputStream());
-
+                fileFromClient = new BufferedInputStream(this.clientSocket.getInputStream());
                 // Temporary var to keep track of read Bytes
                 int _temp_c;
                 while ((_temp_c = fileFromClient.read(readBuffer, 0, readBuffer.length)) != -1) {
                     fileToDB.write(readBuffer, 0, _temp_c);
                     fileToDB.flush();
                 }
-
                 // File successfully uploaded
                 fileFromClient.close();
 
@@ -282,14 +288,13 @@ final public class FileServerHandler implements Runnable {
                 }
                 fileFromClient = null;
             }
-
             // If file was successfully uploaded, add an entry to the File DB
             String statement;
-            PreparedStatement addFile;
+            PreparedStatement addFile = null;
             try {
-                statement = "INSERT INTO file(code, uploader, path) VALUES(?,?,?)";
+                statement = "INSERT INTO file(Code, Uploader, Path) VALUES(?,?,?);";
                 addFile = fileDB.prepareStatement(statement);
-                addFile.setString(1, fileFolder.toFile().getParent());
+                addFile.setString(1, code);
                 addFile.setString(2, request.getSender());
                 addFile.setString(3, fileFolder.toFile().getParent());
                 addFile.executeUpdate();
@@ -300,16 +305,12 @@ final public class FileServerHandler implements Runnable {
                 return;
             } finally {
                 statement = null;
-                addFile = null;
+                try {
+                addFile.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
-
-            // Entire upload process was successful, send File Code to Client
-            HashMap<String, String> headers = new HashMap<String, String>();
-            headers.put("code", fileFolder.toFile().getParent());
-
-            MessageHelpers.sendMessageTo(this.clientSocket,
-                    new UploadMessage(UploadStatus.UPLOAD_SUCCESS, headers, "File Server", "tempServerKey"));
-            headers = null;
         }
 
         else {
@@ -318,5 +319,5 @@ final public class FileServerHandler implements Runnable {
         }
 
     }
-
+    
 }
