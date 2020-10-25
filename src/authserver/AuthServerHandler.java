@@ -82,9 +82,9 @@ final public class AuthServerHandler implements Runnable {
      *         provided
      */
     private static synchronized String generateUserAuthToken() {
-        // Generate a random 10-char alphanumeric String
+        // Generate a random 5-char alphanumeric String
         // 97 corresponds to 'a' and 122 to 'z'
-        String tempAuthID = new Random().ints(97, 122 + 1).limit(10)
+        String tempAuthID = new Random().ints(97, 122 + 1).limit(5)
                 .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
 
         return tempAuthID;
