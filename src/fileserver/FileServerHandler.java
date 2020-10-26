@@ -12,6 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -110,8 +113,6 @@ final public class FileServerHandler implements Runnable {
             }
 
             // Processing Result Set
-
-            // TODO: Check cases for download and time caps
             // First check if Result Set is empty
             File filePath;
             try {
@@ -125,27 +126,82 @@ final public class FileServerHandler implements Runnable {
                     return;
                 }
 
-                else {
-                    // Code exists, send response to Client
-                    code = queryResp.getString("code");
+                code = queryResp.getString("code");
+                // Getting path of File on the machine
+                // General Path expected is USER_HOME/sharenowdb/fileCode/file
+                // TODO: Make DB path mutable
+                filePath = Paths.get(HOME, "sharenowdb", code).toFile().listFiles()[0];
 
-                    // Getting path of File on the machine
-                    // General Path expected is USER_HOME/sharenowdb/fileCode/file
-                    // TODO: Make DB path mutable
-                    filePath = Paths.get(HOME, "sharenowdb", code).toFile().listFiles()[0];
+                // Check if file exists, should always be the case
+                if (!filePath.exists()) {
+                    System.out
+                            .println("ERROR. Critical error in File DB! File exists in MySQL DB but Path was invalid!");
+                    this.clientSocket.close();
+                    return;
+                }
 
-                    // Check if file exists, should always be the case
-                    if (!filePath.exists()) {
-                        System.out.println(
-                                "ERROR. Critical error in File DB! File exists in MySQL DB but Path was invalid!");
-                        this.clientSocket.close();
+                String downloadsRemaning = queryResp.getString("Downloads_Remaining");
+                String timestamp = queryResp.getString("Deletion_Timestamp");
+                int currentThreads = queryResp.getInt("Current_Threads");
+                boolean flag = false;
+
+                // Check if timestamp has been exceeded 
+                if (timestamp != null) {
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+                    LocalDateTime deletionTimestamp = LocalDateTime.parse(timestamp, formatter);
+                    if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp))
+                        flag = true;
+                }
+
+                // Check if downloadsRemaning is 0
+                if (downloadsRemaning != null) {
+                    if (Integer.parseInt(downloadsRemaning) <= 0 && currentThreads == 0)
+                        flag = true;
+                    // If downloadsRemaning is 0 but currentThreads are not 0
+                    else if (Integer.parseInt(downloadsRemaning) <= 0) {
+                        headers.put("fileName", null);
+                        MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                                DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
                         return;
                     }
-
-                    headers.put("fileName", filePath.getName());
-                    MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_START,
-                            headers, "File Server", "tempServerKey"));
                 }
+
+                // If any of the above is true, mark the file for deletion
+                PreparedStatement update = null;
+                if (flag) {
+                    try {
+                        update = fileDB.prepareStatement("UPDATE file SET deletable = TRUE WHERE code = ?");
+                        update.setString(1, code);
+                        update.executeUpdate();
+                        headers.put("fileName", null);
+                        MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                                DownloadStatus.DOWNLOAD_FAIL, headers, "File Server", "tempServerKey"));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+
+                    } finally {
+                        update = null;
+                    }
+                    return;
+                }
+
+                // If all is successful, reduce downloadsRemaning and increase currentThreads
+                try {
+                    update = fileDB.prepareStatement(
+                            "UPDATE file SET Downloads_Remaining = Downloads_Remaining - 1, Current_Threads = Current_Threads + 1 WHERE Code = ?");
+                    update.setString(1, code);
+                    update.executeUpdate();
+                } catch (Exception e) {
+                    e.printStackTrace();
+
+                } finally {
+                    update = null;
+                }
+
+                headers.put("fileName", filePath.getName());
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_START, headers, "File Server", "tempServerKey"));
+
             } catch (Exception e) {
                 e.printStackTrace();
                 return;
@@ -173,10 +229,38 @@ final public class FileServerHandler implements Runnable {
 
                 // File successfully downloaded
                 fileFromDB.close();
+
+                // Reduce the currentThreads
+                PreparedStatement update = null;
+                try {
+                    update = fileDB
+                            .prepareStatement("UPDATE file SET Current_Threads = Current_Threads - 1 WHERE Code = ?");
+                    update.setString(1, request.getHeaders().get("code"));
+                    update.executeUpdate();
+                } catch (Exception e) {
+                    e.printStackTrace();
+
+                } finally {
+                    update = null;
+                }
                 return;
 
             } catch (Exception e) {
                 e.printStackTrace();
+
+                // File failed to download, increase downloadsRemaining and reduce currentThreads
+                PreparedStatement update = null;
+                try {
+                    update = fileDB.prepareStatement(
+                            "UPDATE file SET Downloads_Remaining = Downloads_Remaining + 1, Current_Threads = Current_Threads - 1 WHERE Code = ?");
+                    update.setString(1, request.getHeaders().get("code"));
+                    update.executeUpdate();
+                } catch (Exception e1) {
+                    e1.printStackTrace();
+
+                } finally {
+                    update = null;
+                }
                 return;
             } finally {
                 writeBuffer = null;
@@ -302,14 +386,28 @@ final public class FileServerHandler implements Runnable {
             }
 
             // If file was successfully uploaded, add an entry to the File DB
+            Integer downloadCap = null;
+            String timestamp = request.getHeaders().get("timestamp");
+
+            try {
+                downloadCap = Integer.parseInt(request.getHeaders().get("downloadCap"));
+            } catch (NumberFormatException e) {
+                downloadCap = null;
+            }
+
             String statement;
             PreparedStatement addFile = null;
             try {
-                statement = "INSERT INTO file(code, uploader, filename) VALUES(?,?,?)";
+                statement = "INSERT INTO file(code, uploader, filename, Downloads_Remaining, Deletion_Timestamp) VALUES(?,?,?,?,?)";
                 addFile = fileDB.prepareStatement(statement);
                 addFile.setString(1, code);
                 addFile.setString(2, request.getSender());
                 addFile.setString(3, fileFolder.toFile().getName());
+                if (downloadCap != null)
+                    addFile.setInt(4, downloadCap);
+                else
+                    addFile.setNull(4, java.sql.Types.SMALLINT);
+                addFile.setString(5, timestamp);
                 addFile.executeUpdate();
             } catch (Exception e) {
                 e.printStackTrace();

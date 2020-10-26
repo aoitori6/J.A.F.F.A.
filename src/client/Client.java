@@ -278,7 +278,7 @@ public class Client {
      * @expectedHeaders: code:code
      */
 
-    public String uploadFile(Path filePath) {
+    public String uploadFile(Path filePath, String downloadCap, String timestamp) {
         // Send a LocateServerStatus to the Central Server
         // with isUploadRequest set to true
 
@@ -305,6 +305,8 @@ public class Client {
         // Expect UPLOAD_START if all is successful
         HashMap<String, String> requestHeaders = new HashMap<String, String>();
         requestHeaders.put("filename", filePath.getFileName().toString());
+        requestHeaders.put("downloadCap", downloadCap);
+        requestHeaders.put("timestamp", timestamp);
         if (!MessageHelpers.sendMessageTo(fileSocket,
                 new UploadMessage(UploadStatus.UPLOAD_REQUEST, requestHeaders, this.name, this.authToken)))
             return null;
