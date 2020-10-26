@@ -1,13 +1,18 @@
 package authserver;
 
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+
 public class InterfaceAuthServer {
     public static void main(String[] args) {
         try {
-            AuthServer serverOne = new AuthServer();
-            System.out.println("Port: "+serverOne.getServerPort());
+            ArrayList<InetSocketAddress> fileServersList = new ArrayList<InetSocketAddress>(1);
+            fileServersList.add(new InetSocketAddress("localhost", 9696));
+            AuthServer serverOne = new AuthServer(fileServersList);
+            System.out.println("Port: " + serverOne.getServerPort());
             serverOne.start();
         } catch (Exception e) {
             e.printStackTrace();
-        }   
+        }
     }
 }
