@@ -2,6 +2,10 @@ package client;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Scanner;
 
 import statuscodes.*;
@@ -78,6 +82,8 @@ final public class InterfaceClient {
 
     private static void uploadFile() {
 
+        String downloadCap, timestamp;
+
         // Get File Path
         System.out.println("Enter Path to the File (Absolute Path) (Currently Windows Only)");
         String filePath = conInput.nextLine();
@@ -88,10 +94,48 @@ final public class InterfaceClient {
             return;
         }
 
+        // Get Download Cap (if any)
+        while(true) {
+            System.out.println("Enter Download Cap (or press enter for no download cap)");
+            downloadCap = conInput.nextLine();
+            if(downloadCap.equals("")) {
+                downloadCap = null;
+                break;
+            }
+            try {
+                if(Integer.parseInt(downloadCap) <= 0){
+                    System.out.println("Download Cap must be greater than 0 (or press enter for no download cap)");
+                }  
+                else 
+                    break;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input");
+            }
+        }
+
+        // Get Deletion Timestamp (if any)
+        System.out.println("Enter 1 to set a deletion timestamp or 2 for no deletion timestamp");
+        int choice = conInput.nextInt();
+        if(choice == 1) {
+            System.out.println("Enter the no.of days: ");
+            int days = conInput.nextInt();
+            System.out.println("Enter the no.of hours: ");
+            int hours = conInput.nextInt();
+            System.out.println("Enter the no.of minutes: ");
+            int minutes = conInput.nextInt();
+
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            LocalDateTime ldt = LocalDateTime.now(ZoneId.of("UTC"));
+            long totalMinutes = days*24*60 + hours*60 + minutes;
+
+            timestamp = ldt.plus(totalMinutes, ChronoUnit.MINUTES).format(formatter);
+        } 
+        else
+            timestamp = null;
         System.out.println("Querying Server");
 
         // Reciving The Code, Code Will Be null If Uploading Failed
-        String code = client.uploadFile(Paths.get(filePath));
+        String code = client.uploadFile(Paths.get(filePath), downloadCap, timestamp);
         if (code != null) {
             System.out.println("File Uploaded Successfully");
             System.out.println("Code: " + code);
