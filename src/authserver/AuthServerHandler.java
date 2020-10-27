@@ -1,5 +1,8 @@
 package authserver;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -9,19 +12,24 @@ import java.util.HashMap;
 import java.util.Random;
 
 import message.*;
+import statuscodes.DeleteStatus;
+import statuscodes.DownloadStatus;
 import statuscodes.ErrorStatus;
 import statuscodes.LocateServerStatus;
 import statuscodes.LoginStatus;
 import statuscodes.LogoutStatus;
 import statuscodes.RegisterStatus;
+import statuscodes.UploadStatus;
 
 final public class AuthServerHandler implements Runnable {
     private final Socket clientSocket;
     private static Connection connection;
+    private static Socket primaryFileServerSocket;
 
-    AuthServerHandler(Socket clientSocket, Connection connection) {
+    AuthServerHandler(Socket clientSocket, Connection connection, Socket primaryFileServerSocket) {
         this.clientSocket = clientSocket;
         AuthServerHandler.connection = connection;
+        AuthServerHandler.primaryFileServerSocket = primaryFileServerSocket;
     }
 
     @Override
@@ -50,6 +58,15 @@ final public class AuthServerHandler implements Runnable {
                     break;
                 case Logout:
                     logoutUser((LogoutMessage) request);
+                    break;
+                case Download:
+                    downloadRequest((DownloadMessage) request);
+                    break;
+                case Upload:
+                    uploadRequest((UploadMessage) request);
+                    break;
+                case Delete:
+                    deleteFileRequest((DeleteMessage) request);
                     break;
                 default:
                     generateErrorMessage(request);
@@ -269,8 +286,7 @@ final public class AuthServerHandler implements Runnable {
     }
 
     /**
-     * Takes a LogoutMessage object from the Client and tries to log the 
-     * user out
+     * Takes a LogoutMessage object from the Client and tries to log the user out
      * 
      * @param request LogoutMessage received from Client
      * 
@@ -351,4 +367,149 @@ final public class AuthServerHandler implements Runnable {
         headers = null;
     }
 
+    private void downloadRequest(DownloadMessage request) {
+        // TODO: check the auth token
+
+        if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
+            // Send a download request to the Primary File Server
+            if (!MessageHelpers.sendMessageTo(AuthServerHandler.primaryFileServerSocket, request)) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, "Auth Server", null));
+                return;
+            }
+
+            // Getting the response from the Primary File Server
+            Message response = MessageHelpers.receiveMessageFrom(AuthServerHandler.primaryFileServerSocket);
+            DownloadMessage castResponse = (DownloadMessage) response;
+            response = null;
+
+            if (castResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID) {
+                // If Primary File Server returned failure
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, "Auth Server", null));
+                return;
+            } else {
+                // If Primary File Server returned Success
+                HashMap<String, String> headers = new HashMap<String, String>();
+                // TODO: return proper worker server details
+                headers.put("addr", "localhost");
+                headers.put("port", "7689");
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_VALID, headers, "Auth Server", null));
+                return;
+            }
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, "Auth Server", null));
+            return;
+        }
+    }
+
+    private void uploadRequest(UploadMessage request) {
+        // TODO: check the auth token
+
+        if (request.getStatus() == UploadStatus.UPLOAD_REQUEST) {
+            // Send a upload request to the Primary File Server
+            if (!MessageHelpers.sendMessageTo(AuthServerHandler.primaryFileServerSocket, request)) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                return;
+            }
+
+            // Getting the response from the Primary File Server
+            Message response = MessageHelpers.receiveMessageFrom(AuthServerHandler.primaryFileServerSocket);
+            UploadMessage castResponse = (UploadMessage) response;
+            response = null;
+
+            if (castResponse.getStatus() != UploadStatus.UPLOAD_START) {
+                // If Primary File Server returned failure
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                return;
+            } else {
+                String code = castResponse.getFileInfo().getCode();
+                HashMap<String, String> headers = new HashMap<String, String>();
+                headers.put("code", code);
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new UploadMessage(UploadStatus.UPLOAD_START, headers, "Auth Server", null, null));
+
+                int buffSize = 1_048_576;
+                byte[] writeBuffer = new byte[buffSize];
+                BufferedInputStream fileFromClient = null;
+                BufferedOutputStream fileToServer = null;
+                try {
+                    fileFromClient = new BufferedInputStream(this.clientSocket.getInputStream());
+                    fileToServer = new BufferedOutputStream(primaryFileServerSocket.getOutputStream());
+
+                    // Temporary var to keep track of total bytes read
+                    int _temp_t = 0;
+                    // Temporary var to keep track of read Bytes
+                    int _temp_c;
+                    while ((_temp_c = fileFromClient.read(writeBuffer, 0, writeBuffer.length)) != -1
+                            || (_temp_t <= request.getFileInfo().getSize())) {
+                        fileToServer.write(writeBuffer, 0, _temp_c);
+                        fileToServer.flush();
+                        _temp_t += _temp_c;
+                    }
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return;
+                } finally {
+                    writeBuffer = null;
+                    try {
+                        fileFromClient.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            }
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+            return;
+        }
+    }
+
+    private void deleteFileRequest(DeleteMessage request) {
+        // TODO: check auth token
+
+        if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
+            // Send a delete request to the Primary File Server
+            if (!MessageHelpers.sendMessageTo(AuthServerHandler.primaryFileServerSocket, request)) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, "Auth Server", null, false));
+                return;
+            }
+
+            // Getting the response from the Primary File Server
+            Message response = MessageHelpers.receiveMessageFrom(AuthServerHandler.primaryFileServerSocket);
+            DeleteMessage castResponse = (DeleteMessage) response;
+            response = null;
+
+            if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, "Auth Server", null, false));
+                return;
+            } else {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, "Auth Server", null, false));
+                Socket workerServerSocket = null;
+                try {
+                    workerServerSocket = new Socket("localhost", 7689);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
+                }
+                MessageHelpers.sendMessageTo(workerServerSocket, request);
+            }
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new DeleteMessage(DeleteStatus.DELETE_FAIL, null, "Auth Server", null, false));
+            return;
+        }
+    }
+
+    
 }
