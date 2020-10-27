@@ -69,10 +69,16 @@ public class PrimaryFileServer {
         Socket tempSockt;
         InetSocketAddress tempAddr;
         for (int i = 0; i < this.replicaServers.size(); ++i) {
-            tempSockt = this.replicaServerSocket.accept();
+            try {
+                tempSockt = this.replicaServerSocket.accept();
+            } catch (IOException e) {
+                e.printStackTrace();
+                continue;
+            }
             tempAddr = new InetSocketAddress(tempSockt.getInetAddress(), tempSockt.getLocalPort());
             this.replicaServers.add(tempAddr);
             this.replicaListeners.put(tempAddr, tempSockt);
+            threadPool.execute(new FromAuthHandler(tempSockt, this.fileDB));
         }
 
         // Start File Cleanup thread

@@ -30,6 +30,7 @@ final class FromAuthHandler implements Runnable {
     private final Connection fileDB;
 
     private final static String HOME = System.getProperty("user.home");
+    private final static Path fileStorageFolder = Paths.get(HOME, "sharenow_primarydb");
 
     FromAuthHandler(Socket authServer, Connection fileDB) {
         this.authServer = authServer;
@@ -87,7 +88,7 @@ final class FromAuthHandler implements Runnable {
      *                Message Specs
      * @expectedInstructionIDs: DOWNLOAD_REQUEST
      * @sentInstructionIDs: DOWNLOAD_REQUEST_VALID, DOWNLOAD_REQUEST_INVALID
-     * @expectedHeaders: code:code
+     * @expectedHeaders: code:Code
      */
     private void serverDownload(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
@@ -199,10 +200,10 @@ final class FromAuthHandler implements Runnable {
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
 
             // Check DB location in the File System to see if code already exists
-        } while (Paths.get(HOME, "sharenow_primarydb", tempCode).toFile().exists() == true);
+        } while (fileStorageFolder.resolve(tempCode).toFile().exists() == true);
 
         // Creating new folder named with File Code and return the same
-        return Files.createDirectories(Paths.get(HOME, "sharenow_primarydb", tempCode));
+        return Files.createDirectories(fileStorageFolder.resolve(tempCode));
     }
 
     /**
@@ -216,7 +217,7 @@ final class FromAuthHandler implements Runnable {
      *                <p>
      *                Message Specs
      * @expectedInstructionIDs: UPLOAD_REQUEST
-     * @sentInstructionIDs: UPLOAD_START, UPLOAD_SUCCESS, UPLOAD_FAIL
+     * @sentInstructionIDs: UPLOAD_START, UPLOAD_FAIL
      * @sentHeaders: filecode:FileCode
      */
     private void serverUpload(UploadMessage request) {
@@ -404,13 +405,11 @@ final class FromAuthHandler implements Runnable {
                 ResultSet queryResp = query.executeQuery("SELECT * FROM files WHERE deletable = FALSE");
                 // Parsing Result
                 while (queryResp.next()) {
-                    currFileInfo
-                            .add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
-                                    Paths.get(HOME, "sharenow_primarydb", queryResp.getString("code")).toFile()
-                                            .length(),
-                                    queryResp.getString("uploader"),
-                                    Integer.parseInt(queryResp.getString("downloads_remaining")),
-                                    queryResp.getString("deletion_timestamp")));
+                    currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
+                            fileStorageFolder.resolve(queryResp.getString("code")).toFile().length(),
+                            queryResp.getString("uploader"),
+                            Integer.parseInt(queryResp.getString("downloads_remaining")),
+                            queryResp.getString("deletion_timestamp")));
                 }
                 this.fileDB.commit();
             } catch (SQLException e) {
