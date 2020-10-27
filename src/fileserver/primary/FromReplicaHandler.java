@@ -209,7 +209,7 @@ final class FromReplicaHandler implements Runnable {
      * @expectedInstructionIDs: FILEDETAILS_REQUEST
      * @sentInstructionIDs: FILEDETAILS_SUCCESS, FILEDETAILS_FAIL
      * @sentHeaders: count:FileCount, timestamp:ServerTimestamp (at which time data
-     *               was feteched)
+     *               was fetched)
      */
     private void getAllFileData(FileDetailsMessage request) {
         if (request.getStatus() == FileDetailsStatus.FILEDETAILS_REQUEST) {

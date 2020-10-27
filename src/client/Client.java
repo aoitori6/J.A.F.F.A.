@@ -149,7 +149,7 @@ public class Client {
      * @expectedHeaders: fileName:FileName
      */
     public DownloadStatus downloadFile(String code, Path savePath) {
-        // Adding teh code to the headers
+        // Adding the code to the headers
         HashMap<String, String> requestHeaders = new HashMap<String, String>();
         requestHeaders.put("code", code);
 
