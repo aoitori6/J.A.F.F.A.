@@ -3,6 +3,8 @@ package authserver;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -12,9 +14,11 @@ import java.util.HashMap;
 import java.util.Random;
 
 import message.*;
+import misc.FileInfo;
 import statuscodes.DeleteStatus;
 import statuscodes.DownloadStatus;
 import statuscodes.ErrorStatus;
+import statuscodes.FileDetailsStatus;
 import statuscodes.LocateServerStatus;
 import statuscodes.LoginStatus;
 import statuscodes.LogoutStatus;
@@ -68,6 +72,8 @@ final public class AuthServerHandler implements Runnable {
                 case Delete:
                     deleteFileRequest((DeleteMessage) request);
                     break;
+                case FileDetails:
+                    getAllFileDataRequest((FileDetailsMessage) request);
                 default:
                     generateErrorMessage(request);
                     break listenLoop;
@@ -495,14 +501,14 @@ final public class AuthServerHandler implements Runnable {
             } else {
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, "Auth Server", null, false));
-                Socket workerServerSocket = null;
+                Socket replicaServerSocket = null;
                 try {
-                    workerServerSocket = new Socket("localhost", 7689);
+                    replicaServerSocket = new Socket("localhost", 7689);
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;
                 }
-                MessageHelpers.sendMessageTo(workerServerSocket, request);
+                MessageHelpers.sendMessageTo(replicaServerSocket, request);
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
@@ -511,5 +517,49 @@ final public class AuthServerHandler implements Runnable {
         }
     }
 
-    
+    private void getAllFileDataRequest(FileDetailsMessage request) {
+
+        if (request.getStatus() == FileDetailsStatus.FILEDETAILS_REQUEST) {
+            if (!MessageHelpers.sendMessageTo(AuthServerHandler.primaryFileServerSocket, request)) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                return;
+            }
+
+            Message response = MessageHelpers.receiveMessageFrom(AuthServerHandler.primaryFileServerSocket);
+            FileDetailsMessage castResponse = (FileDetailsMessage) response;
+            response = null;
+
+            if (castResponse.getStatus() != FileDetailsStatus.FILEDETAILS_START) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                return;
+            }
+
+            MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
+                    castResponse.getHeaders(), "Auth Server", null));
+
+            int count = Integer.parseInt(castResponse.getHeaders().get("count"));
+            ObjectOutputStream toClient = null;
+            ObjectInputStream fromPrimaryServer = null;
+            try {
+                toClient = new ObjectOutputStream(this.clientSocket.getOutputStream());
+                fromPrimaryServer = new ObjectInputStream(AuthServerHandler.primaryFileServerSocket.getInputStream());
+
+                for (int i = 0; i < count; ++i)
+                    toClient.writeObject((FileInfo) fromPrimaryServer.readObject());
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            } finally {
+                toClient = null;
+                fromPrimaryServer = null;
+            }
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+            return;
+        }
+    }
 }

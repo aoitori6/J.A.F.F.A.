@@ -137,36 +137,6 @@ public class Client {
     }
 
     /**
-     * 
-     * @param request Kind of Server required
-     * @return HashMap containing addr:ServerAddress, port:ServerPort pairs
-     * @throws NullPointerException: If no File Server found
-     *                               <p>
-     *                               Message Specs
-     * @sentInstructionIDs: GET_SERVER
-     * @expectedInstructionIDs: SERVER_FOUND, SERVER_NOT_FOUND
-     * @expectedHeaders: addr:ServerAddress, port:ServerPort (both null if no File
-     *                   Server found)
-     */
-    protected HashMap<String, String> fetchServerAddress(LocateServerMessage request) throws NullPointerException {
-
-        // Sending LocateServer request
-        if (!MessageHelpers.sendMessageTo(authSocket, request))
-            throw new NullPointerException("ERROR. FileServer not found!");
-
-        // Expecting LocateServer request
-        Message response = MessageHelpers.receiveMessageFrom(authSocket);
-        LocateServerMessage castResponse = (LocateServerMessage) response;
-        response = null;
-
-        // Parsing Response
-        if (castResponse.getStatus() != LocateServerStatus.SERVER_FOUND)
-            throw new NullPointerException("ERROR. FileServer not found!");
-
-        return castResponse.getHeaders();
-    }
-
-    /**
      * @param code     File Code
      * @param savePath Path to save file to
      * 
@@ -179,20 +149,28 @@ public class Client {
      * @expectedHeaders: fileName:FileName
      */
     public DownloadStatus downloadFile(String code, Path savePath) {
-        // Send a LocateServerStatus to the Central Server
-        // with isDownloadRequest set to true
+        // Adding teh code to the headers
+        HashMap<String, String> requestHeaders = new HashMap<String, String>();
+        requestHeaders.put("code", code);
 
-        // Expect addr:ServerAddress, port:ServerPort if Successful
+        // Sending a DownloadRequest to the AuthServer
+        if (!MessageHelpers.sendMessageTo(authSocket,
+                new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, this.name, this.authToken)))
+            return DownloadStatus.DOWNLOAD_REQUEST_FAIL;
+
+        // Reading AuthServer's Response
+        Message authServerResponse = MessageHelpers.receiveMessageFrom(authSocket);
+        DownloadMessage authServerCastResponse = (DownloadMessage) authServerResponse;
+        authServerResponse = null;
+
+        if (authServerCastResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID)
+            return DownloadStatus.DOWNLOAD_REQUEST_INVALID;
+
+        // If DownloadRequest was valid, get the ReplicaServers address and port
         HashMap<String, String> fileServerAddress;
-        try {
-            fileServerAddress = fetchServerAddress(
-                    new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return DownloadStatus.DOWNLOAD_FAIL;
-        }
+        fileServerAddress = authServerCastResponse.getHeaders();
 
-        // If valid Address returned, attempt to connect to FileServer
+        // Attempt to connect to FileServer
         try {
             this.fileSocket = new Socket(fileServerAddress.get("addr"),
                     Integer.parseInt(fileServerAddress.get("port")));
@@ -203,8 +181,6 @@ public class Client {
 
         // Send a DownloadRequest to the File Server
         // Expect DOWNLOAD_START if file exists and all is successful
-        HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("code", code);
         if (!MessageHelpers.sendMessageTo(fileSocket,
                 new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, name, this.authToken)))
             return DownloadStatus.DOWNLOAD_FAIL;
@@ -280,38 +256,17 @@ public class Client {
      */
 
     public String uploadFile(Path filePath, Integer downloadCap, String timestamp) {
-        // Send a LocateServerStatus to the Central Server
-        // with isUploadRequest set to true
-
-        // Expect addr:ServerAddress, port:ServerPort if Successful
-        HashMap<String, String> fileServerAddress;
-        try {
-            fileServerAddress = fetchServerAddress(
-                    new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-
-        // If valid Address returned, attempt to connect to FileServer
-        try {
-            this.fileSocket = new Socket(fileServerAddress.get("addr"),
-                    Integer.parseInt(fileServerAddress.get("port")));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
 
         // Send a UploadRequest to the File Server
         // Expect UPLOAD_START if all is successful
-        if (!MessageHelpers.sendMessageTo(fileSocket,
+        if (!MessageHelpers.sendMessageTo(authSocket,
                 new UploadMessage(UploadStatus.UPLOAD_REQUEST, null, this.name, this.authToken,
                         new FileInfo(filePath.getFileName().toString(), null, filePath.toFile().length(), this.name,
                                 downloadCap, timestamp))))
             return null;
 
         // Parse Response
-        Message response = MessageHelpers.receiveMessageFrom(fileSocket);
+        Message response = MessageHelpers.receiveMessageFrom(authSocket);
         UploadMessage castResponse = (UploadMessage) response;
         response = null;
 
@@ -330,7 +285,7 @@ public class Client {
         try {
             // Begin connecting to file Server and establish read/write Streams
             fileOnClient = new BufferedInputStream(new FileInputStream(filePath.toString()));
-            fileToServer = new BufferedOutputStream(this.fileSocket.getOutputStream());
+            fileToServer = new BufferedOutputStream(this.authSocket.getOutputStream());
 
             // Temporary var to keep track of read Bytes
             int _temp_c;
@@ -349,8 +304,6 @@ public class Client {
             writeBuffer = null;
             try {
                 fileOnClient.close();
-                this.fileSocket.close();
-                fileToServer.close();
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -380,34 +333,15 @@ public class Client {
 
     private boolean deleteFile(String code, boolean isAdmin) {
 
-        // Expect addr:ServerAddress, port:ServerPort if Successful
-        HashMap<String, String> fileServerAddress;
-        try {
-            fileServerAddress = fetchServerAddress(
-                    new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-
-        // If valid Address returned, attempt to connect to FileServer
-        try {
-            this.fileSocket = new Socket(fileServerAddress.get("addr"),
-                    Integer.parseInt(fileServerAddress.get("port")));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-
         // Send a DeleteRequest to the File Server
         HashMap<String, String> requestHeaders = new HashMap<String, String>();
         requestHeaders.put("code", code);
-        if (!MessageHelpers.sendMessageTo(fileSocket,
+        if (!MessageHelpers.sendMessageTo(authSocket,
                 new DeleteMessage(DeleteStatus.DELETE_REQUEST, requestHeaders, this.name, this.authToken, isAdmin)))
             return false;
 
         // Response From the Server
-        Message response = MessageHelpers.receiveMessageFrom(fileSocket);
+        Message response = MessageHelpers.receiveMessageFrom(authSocket);
         DeleteMessage castResponse = (DeleteMessage) response;
         response = null;
 
@@ -416,5 +350,4 @@ public class Client {
         else
             return true;
     }
-
 }

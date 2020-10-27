@@ -212,7 +212,7 @@ final class FromReplicaHandler implements Runnable {
      *               was feteched)
      */
     private void getAllFileData(FileDetailsMessage request) {
-        if (request.getStatus() != FileDetailsStatus.FILEDETAILS_REQUEST) {
+        if (request.getStatus() == FileDetailsStatus.FILEDETAILS_REQUEST) {
             ArrayList<FileInfo> currFileInfo = new ArrayList<FileInfo>(0);
 
             // Querying associated File DB
@@ -235,7 +235,7 @@ final class FromReplicaHandler implements Runnable {
             try (ObjectOutputStream toClient = new ObjectOutputStream(this.replicaServer.getOutputStream());) {
                 // Sending Start message to Replica Server
                 HashMap<String, String> headers = new HashMap<String, String>();
-                headers.put("code", String.valueOf(currFileInfo.size()));
+                headers.put("count", String.valueOf(currFileInfo.size()));
                 headers.put("timestamp", new Date().toString());
                 MessageHelpers.sendMessageTo(this.replicaServer, new FileDetailsMessage(
                         FileDetailsStatus.FILEDETAILS_START, headers, "File Server", "tempAuthToken"));
