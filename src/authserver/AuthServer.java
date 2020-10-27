@@ -19,6 +19,7 @@ public class AuthServer {
 
     private final static String url = "jdbc:mysql://localhost:3306/client_database";
     private Connection clientDB;
+    private Socket primaryFileServerSocket;
 
     private ArrayList<InetSocketAddress> fileServersList = new ArrayList<InetSocketAddress>(1);
     private HashMap<InetSocketAddress, Thread> fileServers = new HashMap<InetSocketAddress, Thread>(1);
@@ -43,6 +44,13 @@ public class AuthServer {
 
         // Client Database to authenticate against
         this.clientDB = DriverManager.getConnection(url, "root", "85246");
+
+        // Try to connect to the Primary File Server
+        try{
+            this.primaryFileServerSocket = new Socket("localhost", 12609);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         // Attempt to establish connections
         for (InetSocketAddress fileServer : fileServersList) {
@@ -70,7 +78,7 @@ public class AuthServer {
         // Begin listening for new Socket connections
         while (!clientThreadPool.isShutdown()) {
             try {
-                clientThreadPool.execute(new AuthServerHandler(authServer.accept(), clientDB));
+                clientThreadPool.execute(new AuthServerHandler(authServer.accept(), clientDB, primaryFileServerSocket));
             } catch (IOException e) {
                 e.printStackTrace();
             }
