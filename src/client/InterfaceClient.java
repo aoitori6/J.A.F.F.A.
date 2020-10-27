@@ -82,7 +82,9 @@ final public class InterfaceClient {
 
     private static void uploadFile() {
 
-        String downloadCap, timestamp;
+        String timestamp;
+        String downloads;
+        Integer downloadCap;
 
         // Get File Path
         System.out.println("Enter Path to the File (Absolute Path) (Currently Windows Only)");
@@ -95,18 +97,18 @@ final public class InterfaceClient {
         }
 
         // Get Download Cap (if any)
-        while(true) {
+        while (true) {
             System.out.println("Enter Download Cap (or press enter for no download cap)");
-            downloadCap = conInput.nextLine();
-            if(downloadCap.equals("")) {
+            downloads = conInput.nextLine();
+            if (downloads.equals("")) {
                 downloadCap = null;
                 break;
-            }
+            } else
+                downloadCap = Integer.parseInt(downloads);
             try {
-                if(Integer.parseInt(downloadCap) <= 0){
+                if (downloadCap.intValue() <= 0) {
                     System.out.println("Download Cap must be greater than 0 (or press enter for no download cap)");
-                }  
-                else 
+                } else
                     break;
             } catch (NumberFormatException e) {
                 System.out.println("Invalid input");
@@ -116,7 +118,7 @@ final public class InterfaceClient {
         // Get Deletion Timestamp (if any)
         System.out.println("Enter 1 to set a deletion timestamp or 2 for no deletion timestamp");
         int choice = conInput.nextInt();
-        if(choice == 1) {
+        if (choice == 1) {
             System.out.println("Enter the no.of days: ");
             int days = conInput.nextInt();
             System.out.println("Enter the no.of hours: ");
@@ -126,11 +128,10 @@ final public class InterfaceClient {
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
             LocalDateTime ldt = LocalDateTime.now(ZoneId.of("UTC"));
-            long totalMinutes = days*24*60 + hours*60 + minutes;
+            long totalMinutes = days * 24 * 60 + hours * 60 + minutes;
 
             timestamp = ldt.plus(totalMinutes, ChronoUnit.MINUTES).format(formatter);
-        } 
-        else
+        } else
             timestamp = null;
         System.out.println("Querying Server");
 

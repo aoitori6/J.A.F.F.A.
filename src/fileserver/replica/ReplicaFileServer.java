@@ -1,4 +1,4 @@
-package fileserver;
+package fileserver.replica;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -13,7 +13,7 @@ import message.AuthMessage;
 import message.MessageHelpers;
 import statuscodes.AuthStatus;
 
-public class FileServer {
+public class ReplicaFileServer {
     private final static byte NTHREADS = 100;
     private final ExecutorService threadPool;
     private final ScheduledExecutorService fileCleanup;
@@ -27,11 +27,11 @@ public class FileServer {
     protected static synchronized boolean checkAuthToken(String clientName, String authToken) {
         AuthMessage response;
         try {
-            if (!MessageHelpers.sendMessageTo(FileServer.authServer,
-                    new AuthMessage(AuthStatus.AUTH_CHECK, null, "File Server", clientName, authToken)))
+            if (!MessageHelpers.sendMessageTo(ReplicaFileServer.authServer,
+                    new AuthMessage(AuthStatus.AUTH_CHECK, null, "File Server", clientName, authToken, false)))
                 return false;
 
-            response = (AuthMessage) MessageHelpers.receiveMessageFrom(FileServer.authServer);
+            response = (AuthMessage) MessageHelpers.receiveMessageFrom(ReplicaFileServer.authServer);
             if (response.getStatus() == AuthStatus.AUTH_VALID)
                 return true;
             else
@@ -53,7 +53,7 @@ public class FileServer {
      * @throws IOException
      * @throws SQLException
      */
-    public FileServer() throws IOException, SQLException {
+    public ReplicaFileServer() throws IOException, SQLException {
         // Initialize FIle Server to listen on some random port
         this.fileServer = new ServerSocket(7689);
 
@@ -66,12 +66,12 @@ public class FileServer {
 
         // Initialize connection to File Database
         // TODO: Get this DB from admin; Remove hardcoding
-        FileServer.fileDB = DriverManager.getConnection(url, "root", "85246");
+        ReplicaFileServer.fileDB = DriverManager.getConnection(url, "root", "85246");
         // FileServer.fileDB.setAutoCommit(false);
 
         // Initialize connection point to Auth Server
         this.authServerListener = new ServerSocket(9696);
-        FileServer.authServer = this.authServerListener.accept();
+        ReplicaFileServer.authServer = this.authServerListener.accept();
     }
 
     public void start() throws IOException, SQLException {
@@ -90,7 +90,7 @@ public class FileServer {
         // Begin listening for new Socket connections
         while (!threadPool.isShutdown()) {
             try {
-                threadPool.execute(new FileServerHandler(this.fileServer.accept(), FileServer.fileDB));
+                threadPool.execute(new ReplicaFileServerHandler(this.fileServer.accept(), ReplicaFileServer.fileDB));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -98,9 +98,9 @@ public class FileServer {
         }
 
         this.fileServer.close();
-        FileServer.fileDB.close();
+        ReplicaFileServer.fileDB.close();
         this.threadPool.shutdown();
-        FileServer.authServer.close();
+        ReplicaFileServer.authServer.close();
         this.authServerListener.close();
     }
 

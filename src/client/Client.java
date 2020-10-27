@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 
 import message.*;
+import misc.FileInfo;
 import statuscodes.*;
 
 public class Client {
@@ -110,8 +111,8 @@ public class Client {
 
     /**
      * 
-     *              <p>
-     *              Message Specs
+     * <p>
+     * Message Specs
      * 
      * @sentInstructionIDs: LOGOUT_REQUEST
      * @expectedInstructionIDs: LOGOUT_SUCCESS, LOGOUT_FAIL
@@ -278,7 +279,7 @@ public class Client {
      * @expectedHeaders: code:code
      */
 
-    public String uploadFile(Path filePath, String downloadCap, String timestamp) {
+    public String uploadFile(Path filePath, Integer downloadCap, String timestamp) {
         // Send a LocateServerStatus to the Central Server
         // with isUploadRequest set to true
 
@@ -303,12 +304,10 @@ public class Client {
 
         // Send a UploadRequest to the File Server
         // Expect UPLOAD_START if all is successful
-        HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("filename", filePath.getFileName().toString());
-        requestHeaders.put("downloadCap", downloadCap);
-        requestHeaders.put("timestamp", timestamp);
         if (!MessageHelpers.sendMessageTo(fileSocket,
-                new UploadMessage(UploadStatus.UPLOAD_REQUEST, requestHeaders, this.name, this.authToken)))
+                new UploadMessage(UploadStatus.UPLOAD_REQUEST, null, this.name, this.authToken,
+                        new FileInfo(filePath.getFileName().toString(), null, filePath.toFile().length(), this.name,
+                                downloadCap, timestamp))))
             return null;
 
         // Parse Response

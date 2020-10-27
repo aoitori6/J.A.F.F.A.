@@ -1,4 +1,4 @@
-package fileserver;
+package fileserver.replica;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -20,20 +20,20 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
 
-import adminclient.FileInfo;
+import misc.FileInfo;
 import message.*;
 import statuscodes.DeleteStatus;
 import statuscodes.DownloadStatus;
 import statuscodes.FileDetailsStatus;
 import statuscodes.UploadStatus;
 
-final public class FileServerHandler implements Runnable {
+final public class ReplicaFileServerHandler implements Runnable {
     private final Socket clientSocket;
     private final Connection fileDB;
 
     private final static String HOME = System.getProperty("user.home");
 
-    FileServerHandler(Socket clientSocket, Connection fileDB) {
+    ReplicaFileServerHandler(Socket clientSocket, Connection fileDB) {
         this.clientSocket = clientSocket;
         this.fileDB = fileDB;
     }
@@ -145,7 +145,7 @@ final public class FileServerHandler implements Runnable {
                 int currentThreads = queryResp.getInt("Current_Threads");
                 boolean flag = false;
 
-                // Check if timestamp has been exceeded 
+                // Check if timestamp has been exceeded
                 if (timestamp != null) {
                     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
                     LocalDateTime deletionTimestamp = LocalDateTime.parse(timestamp, formatter);
@@ -248,7 +248,8 @@ final public class FileServerHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
 
-                // File failed to download, increase downloadsRemaining and reduce currentThreads
+                // File failed to download, increase downloadsRemaining and reduce
+                // currentThreads
                 PreparedStatement update = null;
                 try {
                     update = fileDB.prepareStatement(
@@ -340,7 +341,7 @@ final public class FileServerHandler implements Runnable {
             } catch (IOException e1) {
                 e1.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey"));
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
                 return;
             }
 
@@ -349,7 +350,7 @@ final public class FileServerHandler implements Runnable {
 
             // Code generated successfully, signal Client to begin transfer
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new UploadMessage(UploadStatus.UPLOAD_START, headers, "File Server", "tempServerKey"));
+                    new UploadMessage(UploadStatus.UPLOAD_START, headers, "File Server", "tempServerKey", null));
             headers = null;
 
             // Prep for File transfer
@@ -373,7 +374,7 @@ final public class FileServerHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey"));
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
                 return;
             } finally {
                 readBuffer = null;
@@ -412,7 +413,7 @@ final public class FileServerHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey"));
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
                 return;
             } finally {
                 try {
@@ -425,7 +426,7 @@ final public class FileServerHandler implements Runnable {
 
         else {
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey"));
+                    new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
         }
 
     }
@@ -535,6 +536,7 @@ final public class FileServerHandler implements Runnable {
                 // Parsing Result
                 while (queryResp.next()) {
                     currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
+                            Paths.get(HOME, "sharenowdb", queryResp.getString("code")).toFile().length(),
                             queryResp.getString("uploader"),
                             Integer.parseInt(queryResp.getString("downloads_remaining")),
                             queryResp.getString("deletion_timestamp")));

@@ -7,6 +7,7 @@ import java.util.HashMap;
 
 import client.Client;
 import message.*;
+import misc.FileInfo;
 import statuscodes.*;
 
 public class Admin extends Client {

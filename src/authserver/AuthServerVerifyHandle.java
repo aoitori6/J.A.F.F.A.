@@ -1,7 +1,5 @@
 package authserver;
 
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -22,15 +20,13 @@ public class AuthServerVerifyHandle implements Runnable {
 
     @Override
     public void run() {
-        try (ObjectInputStream fromFileServer = new ObjectInputStream(fileServer.getInputStream());
-                ObjectOutputStream toFileServer = new ObjectOutputStream(fileServer.getOutputStream());) {
-
+        try {
             AuthMessage received;
             PreparedStatement query;
             ResultSet queryResp;
 
-            while (fileServer.isClosed() || authDB.isClosed()) {
-                received = (AuthMessage) fromFileServer.readObject();
+            while (!fileServer.isClosed() && !authDB.isClosed()) {
+                received = (AuthMessage) MessageHelpers.receiveMessageFrom(this.fileServer);
 
                 if (received.getStatus() != AuthStatus.AUTH_CHECK)
                     throw new IllegalArgumentException();
@@ -40,14 +36,17 @@ public class AuthServerVerifyHandle implements Runnable {
                 query.setString(1, received.getClientName());
                 queryResp = query.executeQuery();
 
-                if (queryResp.next())
+                if (queryResp.next()) {
                     if (queryResp.getString("Auth_Code").equals(received.getAuthToken())) {
-                        toFileServer.writeObject(new AuthMessage(AuthStatus.AUTH_VALID, null, "Auth Server",
-                                received.getClientName(), received.getAuthToken()));
-                        continue;
+                        MessageHelpers.sendMessageTo(this.fileServer,
+                                new AuthMessage(AuthStatus.AUTH_VALID, null, "Auth Server", received.getClientName(),
+                                        received.getAuthToken(), queryResp.getBoolean("Admin_Status")));
                     }
-                toFileServer.writeObject(new AuthMessage(AuthStatus.AUTH_INVALID, null, "Auth Server",
-                        received.getClientName(), received.getAuthToken()));
+                }
+
+                else
+                    MessageHelpers.sendMessageTo(this.fileServer, new AuthMessage(AuthStatus.AUTH_INVALID, null,
+                            "Auth Server", received.getClientName(), received.getAuthToken(), false));
 
                 query.close();
             }
@@ -56,19 +55,18 @@ public class AuthServerVerifyHandle implements Runnable {
 
             e.printStackTrace();
             MessageHelpers.sendMessageTo(this.fileServer,
-                    new AuthMessage(AuthStatus.AUTH_CHECKFAIL, null, "Auth Server", null, null));
+                    new AuthMessage(AuthStatus.AUTH_CHECKFAIL, null, "Auth Server", null, null, false));
             return;
 
         } finally {
 
             try {
-                authDB.close();
-                fileServer.close();
+                this.authDB.close();
+                this.fileServer.close();
             } catch (Exception e) {
                 e.printStackTrace();
             }
 
         }
     }
-
 }
