@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -113,6 +116,27 @@ final public class AuthServerHandler implements Runnable {
         return tempAuthID;
     }
 
+    private static synchronized String hashPassword(String password) {
+        byte[] hash = null;
+        try {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        hash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            return null;
+        } 
+        
+        StringBuilder hashedPassword = new StringBuilder(2 * hash.length);
+        for (int i = 0; i < hash.length; i++) {
+            String hex = Integer.toHexString(0xff & hash[i]);
+            if(hex.length() == 1) {
+                hashedPassword.append('0');
+            }
+            hashedPassword.append(hex);
+        }
+        return hashedPassword.toString();
+    }
+
     /**
      * Takes a RegisterMessage object from the Client and tries to register the user
      * vs a database.
@@ -154,11 +178,13 @@ final public class AuthServerHandler implements Runnable {
                     // Username is available
                     // Create new user in client DB
                     query = "INSERT INTO client(username, password) VALUES(?,?);";
+                    // Hashing the password
+                    String hashedPassword = hashPassword(request.getHeaders().get("pass"));
 
                     // Create and execute query
                     statement = connection.prepareStatement(query);
                     statement.setString(1, request.getSender());
-                    statement.setString(2, request.getHeaders().get("pass"));
+                    statement.setString(2, hashedPassword);
                     statement.executeUpdate();
 
                     // Sending success response to Client
@@ -246,9 +272,9 @@ final public class AuthServerHandler implements Runnable {
 
                 else {
                     // User exists, checking password
-                    String password = queryResp.getString("Password");
-
-                    if (password.equals(request.getHeaders().get("pass"))) {
+                    String passwordInDB = queryResp.getString("Password");
+                    String hashedUserInputPassword = hashPassword((request.getHeaders().get("pass")));
+                    if (passwordInDB.equals(hashedUserInputPassword)) {
                         // Password entered by the user matches with the password in the database
                         // Updating user's login status
                         String updateQuery = "UPDATE client SET login_status = 'ONLINE' WHERE username = ?;";
