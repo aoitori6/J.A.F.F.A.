@@ -20,6 +20,7 @@ public class ReplicaFileServer {
     private final ServerSocket fileServer;
     private final ServerSocket authServerListener;
     private static Socket authServer;
+    private Socket primaryFileServerSocket;
 
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
     private static Connection fileDB;
@@ -69,6 +70,13 @@ public class ReplicaFileServer {
         ReplicaFileServer.fileDB = DriverManager.getConnection(url, "root", "85246");
         // FileServer.fileDB.setAutoCommit(false);
 
+        // Try to connect to the Primary File Server
+        try {
+            this.primaryFileServerSocket = new Socket("localhost", 12600);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         // Initialize connection point to Auth Server
         this.authServerListener = new ServerSocket(9696);
         ReplicaFileServer.authServer = this.authServerListener.accept();
@@ -90,7 +98,8 @@ public class ReplicaFileServer {
         // Begin listening for new Socket connections
         while (!threadPool.isShutdown()) {
             try {
-                threadPool.execute(new ReplicaFileServerHandler(this.fileServer.accept(), ReplicaFileServer.fileDB));
+                threadPool.execute(new ReplicaFileServerHandler(this.fileServer.accept(), ReplicaFileServer.fileDB,
+                        this.primaryFileServerSocket, ReplicaFileServer.authServer));
             } catch (IOException e) {
                 e.printStackTrace();
             }
