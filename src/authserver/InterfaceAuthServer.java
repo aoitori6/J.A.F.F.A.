@@ -8,7 +8,7 @@ public class InterfaceAuthServer {
         try {
             ArrayList<InetSocketAddress> fileServersList = new ArrayList<InetSocketAddress>(1);
             fileServersList.add(new InetSocketAddress("localhost", 9696));
-            AuthServer serverOne = new AuthServer(fileServersList);
+            AuthServer serverOne = new AuthServer(fileServersList,null);
             System.out.println("Port: " + serverOne.getServerPort());
             serverOne.start();
         } catch (Exception e) {

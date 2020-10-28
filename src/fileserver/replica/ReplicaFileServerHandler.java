@@ -496,15 +496,15 @@ final public class ReplicaFileServerHandler implements Runnable {
             // Attempt deletion from the File DB
             if (deleteFromDB(this.fileDB, request.getHeaders().get("code"), request.getSender(), request.checkAdmin()))
                 MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null,
-                        "File Server", "tempServerKey", request.checkAdmin()));
+                        null, "File Server", "tempServerKey", request.checkAdmin()));
             else {
                 MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_FAIL, null,
-                        "File Server", "tempServerKey", request.checkAdmin()));
+                        null, "File Server", "tempServerKey", request.checkAdmin()));
             }
 
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_INVALID, null,
-                    "File Server", "tempServerKey", request.checkAdmin()));
+                    null, "File Server", "tempServerKey", request.checkAdmin()));
         }
     }
 

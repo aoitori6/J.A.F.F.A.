@@ -17,7 +17,7 @@ import misc.FileInfo;
 import message.*;
 import statuscodes.DownloadStatus;
 import statuscodes.FileDetailsStatus;
-import statuscodes.UploadStatus;
+import statuscodes.SyncUploadStatus;
 
 final class FromReplicaHandler implements Runnable {
     private final Socket replicaServer;
@@ -49,8 +49,8 @@ final class FromReplicaHandler implements Runnable {
                 case Download:
                     resolveDownloadEffects((DownloadMessage) request);
                     break;
-                case Upload:
-                    sendLocalFile((UploadMessage) request);
+                case SyncUpload:
+                    sendLocalFile((SyncUploadMessage) request);
                     break;
                 case FileDetails:
                     getAllFileData((FileDetailsMessage) request);
@@ -125,8 +125,8 @@ final class FromReplicaHandler implements Runnable {
      *                      UPLOAD_REQUEST_INVALID
      * @expectedHeaders: code:Code
      */
-    private void sendLocalFile(UploadMessage request) {
-        if (request.getStatus() == UploadStatus.UPLOAD_REQUEST) {
+    private void sendLocalFile(SyncUploadMessage request) {
+        if (request.getStatus() == SyncUploadStatus.SYNCUPLOAD_REQUEST) {
 
             // First query the File DB
             FileInfo fileInfo;
@@ -136,8 +136,9 @@ final class FromReplicaHandler implements Runnable {
                 ResultSet queryResp = query.executeQuery();
 
                 if (!queryResp.next()) {
-                    MessageHelpers.sendMessageTo(this.replicaServer, new UploadMessage(
-                            UploadStatus.UPLOAD_REQUEST_INVALID, null, "Primary File Server", "tempToken", null));
+                    MessageHelpers.sendMessageTo(this.replicaServer,
+                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Primary File Server",
+                                    "tempToken", null, null));
                     return;
                 }
 
@@ -148,14 +149,14 @@ final class FromReplicaHandler implements Runnable {
 
             } catch (Exception e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.replicaServer, new UploadMessage(UploadStatus.UPLOAD_REQUEST_FAIL,
-                        null, "Primary File Server", "tempToken", null));
+                MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
+                        null, "Primary File Server", "tempToken", null, null));
                 return;
             }
 
             // Signal Replica to prepare for transfer
-            MessageHelpers.sendMessageTo(this.replicaServer,
-                    new UploadMessage(UploadStatus.UPLOAD_START, null, "Primary File Server", "tempToken", fileInfo));
+            MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_START,
+                    null, "Primary File Server", "tempToken", null, fileInfo));
 
             // Prep for File transfer
             int buffSize = 1_048_576;
@@ -181,8 +182,8 @@ final class FromReplicaHandler implements Runnable {
                 // File transfer done
             } catch (Exception e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.replicaServer,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
+                MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
+                        null, "File Server", "tempServerKey", null, fileInfo));
                 return;
             } finally {
                 readBuffer = null;
@@ -191,8 +192,8 @@ final class FromReplicaHandler implements Runnable {
             }
 
         } else {
-            MessageHelpers.sendMessageTo(this.replicaServer, new UploadMessage(UploadStatus.UPLOAD_REQUEST_FAIL, null,
-                    "Primary File Server", "tempToken", null));
+            MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
+                    null, "Primary File Server", "tempToken", null, null));
         }
     }
 

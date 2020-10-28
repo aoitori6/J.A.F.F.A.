@@ -360,24 +360,23 @@ final class FromAuthHandler implements Runnable {
      *                Message Specs
      * @expectedInstructionIDs: DELETE_REQUEST
      * @sentInstructionIDs: DELETE_SUCCESS, DELETE_FAIL, DELETE_INVALID
-     * @sentHeaders: filecode:FileCode
      */
 
     private void deleteFile(DeleteMessage request) {
         if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
 
             // Attempt deletion from the File DB
-            if (deleteFromDB(request.getHeaders().get("code"), request.getSender(), request.checkAdmin())) {
+            if (deleteFromDB(request.getCode(), request.getSender(), request.checkAdmin())) {
                 MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null,
-                        "File Server", "tempServerKey", request.checkAdmin()));
+                        null, "File Server", "tempServerKey", request.checkAdmin()));
             } else {
                 MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_FAIL, null,
-                        "File Server", "tempServerKey", request.checkAdmin()));
+                        null, "File Server", "tempServerKey", request.checkAdmin()));
             }
 
         } else {
             MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_INVALID, null,
-                    "File Server", "tempServerKey", request.checkAdmin()));
+                    null, "File Server", "tempServerKey", request.checkAdmin()));
         }
     }
 

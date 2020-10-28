@@ -7,14 +7,16 @@ import statuscodes.RequestKind;
 
 public class DeleteMessage extends Message {
     private static final long serialVersionUID = 1L;
+    private final String code;
     private final DeleteStatus status;
     private final String authToken;
     private final boolean isAdmin;
 
-    public DeleteMessage(DeleteStatus status, HashMap<String, String> headers, String from,
+    public DeleteMessage(DeleteStatus status, String code, HashMap<String, String> headers, String from,
             String authToken, boolean isAdmin) {
         super(RequestKind.Delete, headers, from);
         this.status = status;
+        this.code = code;
         this.authToken = authToken;
         this.isAdmin = isAdmin;
     }
@@ -22,6 +24,10 @@ public class DeleteMessage extends Message {
     // Accessors
     public DeleteStatus getStatus() {
         return this.status;
+    }
+
+    public String getCode() {
+        return this.code;
     }
 
     public String getAuthToken() {

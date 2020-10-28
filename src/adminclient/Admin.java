@@ -2,8 +2,6 @@ package adminclient;
 
 import java.util.ArrayList;
 import java.io.ObjectInputStream;
-import java.net.Socket;
-import java.util.HashMap;
 
 import client.Client;
 import message.*;

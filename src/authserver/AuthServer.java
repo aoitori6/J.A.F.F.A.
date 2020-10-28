@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class AuthServer {
     private final static byte NTHREADS = 12;
@@ -21,21 +22,27 @@ public class AuthServer {
     private Connection clientDB;
     private Socket primaryFileServerSocket;
 
-    private ArrayList<InetSocketAddress> fileServersList = new ArrayList<InetSocketAddress>(1);
-    private HashMap<InetSocketAddress, Thread> fileServers = new HashMap<InetSocketAddress, Thread>(1);
+    private ArrayList<InetSocketAddress> authRequesterAddrs = new ArrayList<InetSocketAddress>(1);
+    private HashMap<InetSocketAddress, Socket> authRequesterSockts = new HashMap<InetSocketAddress, Socket>(1);
+
+    private ArrayList<InetSocketAddress> replicaAddrs = new ArrayList<InetSocketAddress>(1);
 
     /**
      * Constructor that automatically starts the Auth Server as a localhost and
      * listens on a random port. The server doesn't begin accepting requests until
      * the start method is called.
      * 
-     * @param fileServersList List of File Servers the Auth Server will monitor and
-     *                        maintain Sockets to
+     * @param authRequesterAddrs List of Addresses the Auth Server will monitor and
+     *                           maintain Sockets to to provide Authentication
+     *                           Services.
+     * @param replicaAddrs       List of Replica Servers the Auth Server will
+     *                           attempt to send synchronization requests to.
      * @throws IOException  If Server couldn't be initialized
      * @throws SQLException If Server couldn't establish a connection to the MySQL
      *                      DB
      */
-    public AuthServer(ArrayList<InetSocketAddress> fileServersList) throws IOException, SQLException {
+    public AuthServer(ArrayList<InetSocketAddress> authRequesterAddrs, ArrayList<InetSocketAddress> replicaAddrs)
+            throws IOException, SQLException {
         // Initialize Auth Server to listen on some random port
         authServer = new ServerSocket(0);
 
@@ -44,48 +51,82 @@ public class AuthServer {
 
         // Client Database to authenticate against
         this.clientDB = DriverManager.getConnection(url, "root", "85246");
+        this.clientDB.setAutoCommit(false);
 
         // Try to connect to the Primary File Server
-        try{
+        try {
             this.primaryFileServerSocket = new Socket("localhost", 12609);
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // Attempt to establish connections
-        for (InetSocketAddress fileServer : fileServersList) {
+        // Attempt to establish connection to Auth Requesters to test validity
+        Socket tempSock;
+        for (InetSocketAddress authRequester : authRequesterAddrs) {
             try {
-                fileServers.put(fileServer, new Thread(new AuthServerVerifyHandle(
-                        new Socket(fileServer.getHostName(), fileServer.getPort()), this.clientDB)));
-                this.fileServersList.add(fileServer);
+                tempSock = new Socket(authRequester.getHostName(), authRequester.getPort());
+                this.authRequesterSockts.put(authRequester, tempSock);
+                this.authRequesterAddrs.add(authRequester);
             } catch (Exception e) {
                 e.printStackTrace();
-                System.err.format("ERROR: Couldn't connect to File Server %s! Ignoring.%n", fileServer.toString());
+                this.authRequesterAddrs.remove(authRequester);
+                System.err.format("ERROR: Couldn't connect to Auth Requester %s! Ignoring.%n",
+                        authRequester.toString());
+                continue;
             }
         }
 
-        // Starting File Server listeners
-        for (InetSocketAddress fileServer : this.fileServersList) {
-            fileServers.get(fileServer).start();
-            System.err.format("INFO: Started Thread listened to File Server %s.%n", fileServer);
+        // Attempt to establish connection to Replica Servers
+        for (InetSocketAddress replicaAddr : replicaAddrs) {
+            try {
+                tempSock = new Socket(replicaAddr.getHostName(), replicaAddr.getPort());
+                this.replicaAddrs.add(replicaAddr);
+            } catch (Exception e) {
+                e.printStackTrace();
+                this.replicaAddrs.remove(replicaAddr);
+                System.err.format("ERROR: Couldn't connect to Replica File Server %s! Ignoring.%n",
+                        replicaAddr.toString());
+                continue;
+            }
         }
     }
 
-    public void start() {
+    public void start() throws SQLException, IOException, InterruptedException {
         if (authServer.equals(null))
             throw new NullPointerException("Error. Auth Server was not initialized!");
+
+        // Starting Auth Service listeners
+        for (InetSocketAddress authRequester : this.authRequesterAddrs) {
+            clientThreadPool
+                    .execute(new AuthServerVerifyHandle(this.authRequesterSockts.get(authRequester), this.clientDB));
+            System.err.format("INFO: Started Thread listening to Auth Requester %s.%n", authRequester.toString());
+        }
 
         // Begin listening for new Socket connections
         while (!clientThreadPool.isShutdown()) {
             try {
-                clientThreadPool.execute(new AuthServerHandler(authServer.accept(), clientDB, primaryFileServerSocket));
+                clientThreadPool.execute(new AuthServerHandler(authServer.accept(), this.clientDB,
+                        this.primaryFileServerSocket, this.replicaAddrs));
             } catch (IOException e) {
                 e.printStackTrace();
             }
 
         }
 
-        clientThreadPool.shutdown();
+        this.clientThreadPool.shutdown();
+        this.clientThreadPool.awaitTermination(15, TimeUnit.MINUTES);
+
+        // Closing Client DB Connection
+        this.clientDB.close();
+
+        // Closing Auth Service Sockets
+        for (InetSocketAddress authRequester : this.authRequesterAddrs) {
+            this.authRequesterSockts.get(authRequester).close();
+            System.err.format("INFO: Stopped Socket listening to Auth Requester %s.%n", authRequester.toString());
+        }
+
+        // Closing Primary Server Sockets
+        this.primaryFileServerSocket.close();
     }
 
     /**

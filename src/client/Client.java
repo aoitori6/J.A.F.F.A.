@@ -328,16 +328,13 @@ public class Client {
      *                Message Specs
      * @sentInstructionIDs: DELETE_REQUEST
      * @expectedInstructionIDs: DELETE_SUCCESS, DELETE_FAIL, DELETE_INVALID
-     * @sentHeaders: code:code
      */
 
     private boolean deleteFile(String code, boolean isAdmin) {
 
         // Send a DeleteRequest to the File Server
-        HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("code", code);
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new DeleteMessage(DeleteStatus.DELETE_REQUEST, requestHeaders, this.name, this.authToken, isAdmin)))
+                new DeleteMessage(DeleteStatus.DELETE_REQUEST, code, null, this.name, this.authToken, isAdmin)))
             return false;
 
         // Response From the Server
