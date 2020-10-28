@@ -28,29 +28,8 @@ public class Admin extends Client {
      *                   data was feteched)
      */
     public ArrayList<FileInfo> getAllFileData() {
-        // Send a LocateServerStatus to the Central Server
-        // with isUploadRequest set to true
 
-        // Expect addr:ServerAddress, port:ServerPort if Successful
-        HashMap<String, String> fileServerAddress;
-        try {
-            fileServerAddress = fetchServerAddress(
-                    new LocateServerMessage(LocateServerStatus.GET_SERVER, null, this.name, this.authToken, true));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-
-        // If valid Address returned, attempt to connect to FileServer
-        try {
-            this.fileSocket = new Socket(fileServerAddress.get("addr"),
-                    Integer.parseInt(fileServerAddress.get("port")));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-
-        // Send a FileDetailsRequest to the Central File Server
+        // Send a FileDetailsRequest to the Auth Server
         // Expect FILEDETAILS_START if file exists and all is successful
         if (!MessageHelpers.sendMessageTo(fileSocket,
                 new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_REQUEST, null, name, this.authToken)))

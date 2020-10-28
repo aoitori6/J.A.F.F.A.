@@ -3,6 +3,8 @@ package authserver;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -12,9 +14,11 @@ import java.util.HashMap;
 import java.util.Random;
 
 import message.*;
+import misc.FileInfo;
 import statuscodes.DeleteStatus;
 import statuscodes.DownloadStatus;
 import statuscodes.ErrorStatus;
+import statuscodes.FileDetailsStatus;
 import statuscodes.LocateServerStatus;
 import statuscodes.LoginStatus;
 import statuscodes.LogoutStatus;
@@ -68,6 +72,8 @@ final public class AuthServerHandler implements Runnable {
                 case Delete:
                     deleteFileRequest((DeleteMessage) request);
                     break;
+                case FileDetails:
+                    getAllFileDataRequest((FileDetailsMessage) request);
                 default:
                     generateErrorMessage(request);
                     break listenLoop;
@@ -367,6 +373,20 @@ final public class AuthServerHandler implements Runnable {
         headers = null;
     }
 
+    /**
+     * Takes a DownloadMessage object from the Client and sends a DownloadRequest to
+     * the Primary File Server. It returns address and port of a Replica File Server
+     * on receiving a success message from the Primary File Server
+     * 
+     * @param request DownloadMessage object from the Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: DOWNLOAD_REQUEST
+     * @sentInstructionIDs: DOWNLOAD_REQUEST_VALID, DOWNLOAD_REQUEST_INVALID,
+     *                      DOWNLOAD_REQUEST_FAIL
+     * @sentHeaders: addr:AddressOfReplicaServer, port:PortOfReplicaServer
+     */
     private void downloadRequest(DownloadMessage request) {
         // TODO: check the auth token
 
@@ -391,7 +411,7 @@ final public class AuthServerHandler implements Runnable {
             } else {
                 // If Primary File Server returned Success
                 HashMap<String, String> headers = new HashMap<String, String>();
-                // TODO: return proper worker server details
+                // TODO: return proper Replica File Server details
                 headers.put("addr", "localhost");
                 headers.put("port", "7689");
                 MessageHelpers.sendMessageTo(this.clientSocket,
@@ -405,6 +425,19 @@ final public class AuthServerHandler implements Runnable {
         }
     }
 
+    /**
+     * Takes a UploadMessage object from the Client and sends a UploadRequest to the
+     * Primary File Server. On receiving a success message from Primary File Server,
+     * it transfers the file uploaded by the client to the Primary File Server
+     * 
+     * @param request UploadMessage received from Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: UPLOAD_REQUEST
+     * @sentInstructionIDs: UPLOAD_START, UPLOAD_FAIL
+     * @sentHeaders: code:code
+     */
     private void uploadRequest(UploadMessage request) {
         // TODO: check the auth token
 
@@ -427,9 +460,12 @@ final public class AuthServerHandler implements Runnable {
                         new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
                 return;
             } else {
+                // If Primary File Server returned success
                 String code = castResponse.getFileInfo().getCode();
                 HashMap<String, String> headers = new HashMap<String, String>();
                 headers.put("code", code);
+
+                // Sending UploadStart message to the client
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new UploadMessage(UploadStatus.UPLOAD_START, headers, "Auth Server", null, null));
 
@@ -472,6 +508,18 @@ final public class AuthServerHandler implements Runnable {
         }
     }
 
+    /**
+     * Takes a DeleteMesage object from the Client and sends a DeleteRequest to the
+     * Primary File Server. On receiving a success message from the Primary File
+     * Server, it sends a DeleteRequest to all the Replica File Servers
+     * 
+     * @param request DeleteMessage received from Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: DELETE_REQUEST
+     * @sentInstructionIDs: DELETE_SUCCESS, DELETE_FAIL, DELETE_INVALID
+     */
     private void deleteFileRequest(DeleteMessage request) {
         // TODO: check auth token
 
@@ -489,27 +537,95 @@ final public class AuthServerHandler implements Runnable {
             response = null;
 
             if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS) {
+                // If Primary File Server returned failure
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new DeleteMessage(DeleteStatus.DELETE_FAIL, null, "Auth Server", null, false));
                 return;
             } else {
+                // If Primary File Server returned success
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, "Auth Server", null, false));
-                Socket workerServerSocket = null;
+
+                // TODO: Send deletion request to all the Replica File Servers
+                Socket replicaServerSocket = null;
                 try {
-                    workerServerSocket = new Socket("localhost", 7689);
+                    replicaServerSocket = new Socket("localhost", 7689);
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;
                 }
-                MessageHelpers.sendMessageTo(workerServerSocket, request);
+                MessageHelpers.sendMessageTo(replicaServerSocket, request);
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new DeleteMessage(DeleteStatus.DELETE_FAIL, null, "Auth Server", null, false));
+                    new DeleteMessage(DeleteStatus.DELETE_INVALID, null, "Auth Server", null, false));
             return;
         }
     }
 
-    
+    /**
+     * Takes a FileDetailsMessage object from the Admin and sends a
+     * FileDetailsRequest to the Primary File Server. On receiving a success message
+     * from the Primary File Server, it recieves the details of all the files from
+     * the Primary File Server and transfers it to the Admin
+     * 
+     * @param request FileDetailsMessage received from the Admin
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: FILEDETAILS_REQUEST
+     * @sentInstructionIDs: FILEDETAILS_START, FILEDETAILS_FAIL
+     * @sentHeaders: count:FileCount, timestamp:ServerTimestamp (at which time data
+     *               was fetched)
+     */
+    private void getAllFileDataRequest(FileDetailsMessage request) {
+
+        if (request.getStatus() == FileDetailsStatus.FILEDETAILS_REQUEST) {
+            // Send a getAllFileDetails request to the Primary File Server
+            if (!MessageHelpers.sendMessageTo(AuthServerHandler.primaryFileServerSocket, request)) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                return;
+            }
+
+            // Receiving response from the Primary File Server
+            Message response = MessageHelpers.receiveMessageFrom(AuthServerHandler.primaryFileServerSocket);
+            FileDetailsMessage castResponse = (FileDetailsMessage) response;
+            response = null;
+
+            if (castResponse.getStatus() != FileDetailsStatus.FILEDETAILS_START) {
+                // If Primary File Server returned failure
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                return;
+            }
+
+            // If Primary File Server returned success
+            // Sending a FileDetails Start message to the client
+            MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
+                    castResponse.getHeaders(), "Auth Server", null));
+
+            int count = Integer.parseInt(castResponse.getHeaders().get("count"));
+            ObjectOutputStream toClient = null;
+            ObjectInputStream fromPrimaryServer = null;
+            try {
+                toClient = new ObjectOutputStream(this.clientSocket.getOutputStream());
+                fromPrimaryServer = new ObjectInputStream(AuthServerHandler.primaryFileServerSocket.getInputStream());
+
+                for (int i = 0; i < count; ++i)
+                    toClient.writeObject((FileInfo) fromPrimaryServer.readObject());
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            } finally {
+                toClient = null;
+                fromPrimaryServer = null;
+            }
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket,
+                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+            return;
+        }
+    }
 }
