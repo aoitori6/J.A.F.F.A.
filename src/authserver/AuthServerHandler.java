@@ -12,6 +12,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -121,13 +122,15 @@ final public class AuthServerHandler implements Runnable {
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
 
             // Query DB to see if String is unique
-            PreparedStatement query = clientDB.prepareStatement("SELECT Code from client WHERE Code = ?");
+            PreparedStatement query = clientDB.prepareStatement("SELECT Auth_Code from client WHERE Auth_Code = ?");
             query.setString(1, tempAuthID);
-            if (query.executeUpdate() != 0)
+            ResultSet queryResp = query.executeQuery();
+
+            if (!queryResp.next())
                 isValidToken = true;
             query.close();
 
-        } while (isValidToken);
+        } while (!isValidToken);
         clientDB.commit();
 
         return tempAuthID;
@@ -181,7 +184,7 @@ final public class AuthServerHandler implements Runnable {
             boolean nameValid = true;
             // Check Auth DB if username is available
             try (PreparedStatement query = this.clientDB
-                    .prepareStatement("SELECT Username FROM client WHERE Username =?");) {
+                    .prepareStatement("SELECT Username FROM client WHERE Username = ?");) {
 
                 query.setString(1, request.getSender());
                 // If true, then username is already taken
@@ -285,7 +288,7 @@ final public class AuthServerHandler implements Runnable {
             // If it succeeds, user has been successfully logged in
             boolean validLogin = true;
             // Hashing password
-            String hashedPass = request.getHeaders().get("pass");
+            String hashedPass = AuthServerHandler.hashPassword(request.getHeaders().get("pass"));
 
             try (PreparedStatement query = this.clientDB
                     .prepareStatement("UPDATE client_database.client SET Login_Status = 'ONLINE', Auth_Code = ? "

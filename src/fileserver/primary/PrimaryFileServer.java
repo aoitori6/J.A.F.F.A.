@@ -61,7 +61,7 @@ public class PrimaryFileServer {
         // Initialize connection to File Database
         // TODO: Get this DB from admin; Remove hardcoding
         this.fileDB = DriverManager.getConnection(url, "root", "85246");
-        this.fileDB.setAutoCommit(false);
+        this.fileDB.setAutoCommit(true);
 
         this.replicaServers = new ArrayList<InetSocketAddress>(replicaCount);
         this.replicaListeners = new HashMap<InetSocketAddress, Socket>();

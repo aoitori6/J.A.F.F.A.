@@ -44,7 +44,7 @@ public class AuthServer {
     public AuthServer(ArrayList<InetSocketAddress> authRequesterAddrs, ArrayList<InetSocketAddress> replicaAddrs)
             throws IOException, SQLException {
         // Initialize Auth Server to listen on some random port
-        authServer = new ServerSocket(0);
+        authServer = new ServerSocket(9000);
 
         // Thread Pool to allocate Tasks to
         clientThreadPool = Executors.newFixedThreadPool(NTHREADS);

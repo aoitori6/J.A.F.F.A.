@@ -52,6 +52,7 @@ class DeletionService implements Runnable {
                 fileCodes.add(FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")));
             query.close();
             query = this.fileDB.prepareStatement("DELETE FROM file WHERE Deletion_Timestamp <= ?");
+            query.setString(1, currTime);
             query.executeUpdate();
 
             this.fileDB.commit();
