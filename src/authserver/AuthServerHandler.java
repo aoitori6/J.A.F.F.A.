@@ -188,7 +188,7 @@ final public class AuthServerHandler implements Runnable {
 
                 query.setString(1, request.getSender());
                 // If true, then username is already taken
-                if (!query.executeQuery().next())
+                if (query.executeQuery().next())
                     nameValid = false;
                 this.clientDB.commit();
 
@@ -556,7 +556,7 @@ final public class AuthServerHandler implements Runnable {
                     // Temporary var to keep track of read Bytes
                     int _temp_c;
                     while ((_temp_c = fileFromClient.read(writeBuffer, 0, writeBuffer.length)) != -1
-                            || (_temp_t <= request.getFileInfo().getSize())) {
+                            && (_temp_t != request.getFileInfo().getSize())) {
                         fileToServer.write(writeBuffer, 0, _temp_c);
                         fileToServer.flush();
                         _temp_t += _temp_c;

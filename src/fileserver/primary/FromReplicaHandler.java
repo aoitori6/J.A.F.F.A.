@@ -214,7 +214,7 @@ final class FromReplicaHandler implements Runnable {
                 // Temporary var to keep track of bytes read on each iteration
                 int _temp_c;
                 while (((_temp_c = fileFromDB.read(readBuffer, 0, readBuffer.length)) != -1)
-                        || (_temp_t <= fileInfo.getSize())) {
+                        && (_temp_t != fileInfo.getSize())) {
                     fileToReplica.write(readBuffer, 0, _temp_c);
                     fileToReplica.flush();
                     _temp_t += _temp_c;

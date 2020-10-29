@@ -258,7 +258,7 @@ final class FromAuthHandler implements Runnable {
                 // Temporary var to keep track of bytes read on each iteration
                 int _temp_c;
                 while (((_temp_c = fileFromAuth.read(readBuffer, 0, readBuffer.length)) != -1)
-                        || (_temp_t <= uploadInfo.getSize())) {
+                        && (_temp_t != uploadInfo.getSize())) {
                     fileToDB.write(readBuffer, 0, _temp_c);
                     fileToDB.flush();
                     _temp_t += _temp_c;
