@@ -47,7 +47,9 @@ final class FromReplicaHandler implements Runnable {
     public void run() {
         while (!this.replicaServer.isClosed()) {
             // Expect a Message from the Client
+            System.err.println("ReplicaHandle: Expecting Message");
             Message request = MessageHelpers.receiveMessageFrom(this.replicaServer);
+            System.err.println("ReplicaHandle: Got Message");
 
             // Central Logic
             // Execute different methods after checking Message status
@@ -168,6 +170,7 @@ final class FromReplicaHandler implements Runnable {
     private void sendLocalFile(SyncUploadMessage request) {
         if (request.getStatus() == SyncUploadStatus.SYNCUPLOAD_REQUEST) {
 
+            System.err.println("Checking DB for File");
             // First query the File DB
             FileInfo fileInfo;
             try (PreparedStatement query = this.fileDB.prepareStatement("SELECT * FROM file WHERE Code = ?");) {
@@ -182,8 +185,8 @@ final class FromReplicaHandler implements Runnable {
                 }
 
                 fileInfo = new FileInfo(queryResp.getString("Filename"), queryResp.getString("Code"),
-                        FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")).toFile()
-                                .length(),
+                        FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code"))
+                                .resolve(queryResp.getString("Filename")).toFile().length(),
                         queryResp.getString("Uploader"), queryResp.getInt("Downloads_Remaining"), "Deletion_Timestamp");
                 this.fileDB.commit();
 
@@ -194,6 +197,7 @@ final class FromReplicaHandler implements Runnable {
                 return;
             }
 
+            System.err.println("Signaling Replica to Start");
             // Signal Replica to prepare for transfer
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_START,
                     null, "Primary File Server", "tempToken", fileInfo.getCode(), fileInfo));
@@ -203,8 +207,9 @@ final class FromReplicaHandler implements Runnable {
             byte[] readBuffer = new byte[buffSize];
             BufferedOutputStream fileToReplica = null;
 
-            try (BufferedInputStream fileFromDB = new BufferedInputStream(new FileInputStream(
-                    FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode()).toString()));) {
+            try (BufferedInputStream fileFromDB = new BufferedInputStream(
+                    new FileInputStream(FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode())
+                            .resolve(fileInfo.getName()).toString()));) {
 
                 // Begin connecting to file Server and establish read/write Streams
                 fileToReplica = new BufferedOutputStream(this.replicaServer.getOutputStream());
@@ -212,14 +217,17 @@ final class FromReplicaHandler implements Runnable {
                 // Temporary var to keep track of total bytes read
                 long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
-                int _temp_c;
-                while (((_temp_c = fileFromDB.read(readBuffer, 0, readBuffer.length)) != -1)
-                        && (_temp_t != fileInfo.getSize())) {
+                int _temp_c = 0;
+                while ((_temp_t < fileInfo.getSize()) && ((_temp_c = fileFromDB.read(readBuffer, 0,
+                        Math.min(readBuffer.length, (int) fileInfo.getSize()))) != -1)) {
                     fileToReplica.write(readBuffer, 0, _temp_c);
                     fileToReplica.flush();
                     _temp_t += _temp_c;
                 }
                 // File transfer done
+                System.err.println("File Transfer Done");
+                MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(
+                        SyncUploadStatus.SYNCUPLOAD_SUCCESS, null, "File Server", "tempServerKey", null, null));
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,

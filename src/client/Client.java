@@ -220,9 +220,10 @@ public class Client {
             // Temporary var to keep track of total bytes read
             long _temp_t = 0;
             // Temporary var to keep track of read Bytes
-            int _temp_c;
-            while (((_temp_c = fileFromServer.read(writeBuffer, 0, writeBuffer.length)) != -1)
-                    && (_temp_t != Integer.parseInt(responseHeaders.get("fileSize")))) {
+            int _temp_c = 0;
+            while ((_temp_t < Integer.parseInt(responseHeaders.get("fileSize")))
+                    && ((_temp_c = fileFromServer.read(writeBuffer, 0,
+                            Math.min(writeBuffer.length, Integer.parseInt(responseHeaders.get("fileSize"))))) != -1)) {
                 fileOnClient.write(writeBuffer, 0, _temp_c);
                 fileOnClient.flush();
                 _temp_t += _temp_c;
@@ -251,8 +252,6 @@ public class Client {
      *                 Message Specs
      * @sentInstructionIDs: UPLOAD_REQUEST
      * @expectedInstructionIDs: UPLOAD_START, UPLOAD_SUCCESS, UPLOAD_FAIL
-     * @sentHeaders: filename:FileName
-     * @expectedHeaders: code:code
      */
 
     public String uploadFile(Path filePath, Integer downloadCap, String timestamp) {
@@ -293,9 +292,9 @@ public class Client {
             // Temporary var to keep track of total bytes read
             long _temp_t = 0;
             // Temporary var to keep track of read Bytes
-            int _temp_c;
-            while (((_temp_c = fileOnClient.read(writeBuffer, 0, writeBuffer.length)) != -1)
-                    && (_temp_t != filePath.toFile().length())) {
+            int _temp_c = 0;
+            while ((_temp_t < filePath.toFile().length()) && ((_temp_c = fileOnClient.read(writeBuffer, 0,
+                    Math.min(writeBuffer.length, (int) filePath.toFile().length()))) != -1)) {
                 fileToServer.write(writeBuffer, 0, _temp_c);
                 fileToServer.flush();
                 _temp_t += _temp_c;
@@ -316,8 +315,15 @@ public class Client {
             }
         }
 
+        // Parse Response
+        response = MessageHelpers.receiveMessageFrom(authSocket);
+        castResponse = (UploadMessage) response;
+        response = null;
+
+        if (castResponse.getFileInfo() == null)
+            return null;
         // Returning the Code if Everthing was successful
-        return castResponse.getHeaders().get("code").toString();
+        return castResponse.getFileInfo().getCode();
 
     }
 

@@ -120,9 +120,9 @@ final public class ReplicaFileServerHandler implements Runnable {
                 // Temporary var to keep track of total bytes read
                 long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
-                int _temp_c;
-                while (((_temp_c = fileFromDB.read(writeBuffer, 0, writeBuffer.length)) != -1)
-                        && (_temp_t != filePath.length())) {
+                int _temp_c = 0;
+                while ((_temp_t < filePath.length()) && ((_temp_c = fileFromDB.read(writeBuffer, 0,
+                        Math.min(writeBuffer.length, (int) filePath.length()))) != -1)) {
                     fileToClient.write(writeBuffer, 0, _temp_c);
                     fileToClient.flush();
                     _temp_t += _temp_c;
@@ -175,6 +175,7 @@ final public class ReplicaFileServerHandler implements Runnable {
             FileInfo fileInfo;
             synchronized (this.primaryFileServerSocket) {
 
+                System.err.println("Sending Message to Primary Server");
                 // Send a request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(this.primaryFileServerSocket, request)) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
@@ -183,6 +184,7 @@ final public class ReplicaFileServerHandler implements Runnable {
                     return;
                 }
 
+                System.err.println("Received Message from Primary Server");
                 // Receive a response from the Primary File Server
                 Message response = MessageHelpers.receiveMessageFrom(this.primaryFileServerSocket);
                 SyncUploadMessage castResponse = (SyncUploadMessage) response;
@@ -203,7 +205,9 @@ final public class ReplicaFileServerHandler implements Runnable {
                     // Get the code sent by the Auth Server
                     fileInfo = castResponse.getFileInfo();
                     filePath = FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode());
-                    // Create the file itself in the Folder
+                    // Create the folders
+                    Files.createDirectories(filePath);
+                    // Create the File itself in the folder
                     filePath = Files.createFile(filePath.resolve(castResponse.getFileInfo().getName()));
                 } catch (IOException e1) {
                     e1.printStackTrace();
@@ -213,6 +217,7 @@ final public class ReplicaFileServerHandler implements Runnable {
                     return;
                 }
 
+                System.err.println("Preparing for file from Primary Server");
                 // Prep for File transfer
                 int buffSize = 1_048_576;
                 byte[] readBuffer = new byte[buffSize];
@@ -226,9 +231,9 @@ final public class ReplicaFileServerHandler implements Runnable {
                     // Temporary var to keep track of total bytes read
                     long _temp_t = 0;
                     // Temporary var to keep track of bytes read on each iteration
-                    int _temp_c;
-                    while (((_temp_c = fileFromPrimaryFileServer.read(readBuffer, 0, readBuffer.length)) != -1)
-                            && (_temp_t != fileInfo.getSize())) {
+                    int _temp_c = 0;
+                    while ((_temp_t < fileInfo.getSize()) && ((_temp_c = fileFromPrimaryFileServer.read(readBuffer, 0,
+                            Math.min(readBuffer.length, (int) fileInfo.getSize()))) != -1)) {
                         fileToDB.write(readBuffer, 0, _temp_c);
                         fileToDB.flush();
                         _temp_t += _temp_c;
@@ -236,7 +241,7 @@ final public class ReplicaFileServerHandler implements Runnable {
 
                 } catch (Exception e) {
                     e.printStackTrace();
-                    MessageHelpers.sendMessageTo(this.clientSocket,
+                    MessageHelpers.sendMessageTo(this.primaryFileServerSocket,
                             new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Replica File Server",
                                     "tempServerKey", null, null));
                     return;
@@ -244,11 +249,13 @@ final public class ReplicaFileServerHandler implements Runnable {
                     readBuffer = null;
                     fileFromPrimaryFileServer = null;
                 }
+                System.err.println("File Transfer Done from Primary Server");
+                MessageHelpers.receiveMessageFrom(this.primaryFileServerSocket);
             }
 
             // If file was successfully uploaded, add an entry to the File DB
             try (PreparedStatement query = this.fileDB
-                    .prepareStatement("INSERT INTO file(code, uploader, filename) VALUES(?,?,?)");) {
+                    .prepareStatement("INSERT INTO replica_file(code, uploader, filename) VALUES(?,?,?)");) {
                 query.setString(1, fileInfo.getCode());
                 query.setString(2, fileInfo.getUploader());
                 query.setString(3, fileInfo.getName());
@@ -259,6 +266,7 @@ final public class ReplicaFileServerHandler implements Runnable {
                 return;
             }
 
+            System.err.println("Sending Message to Auth");
             // Everything was successful, send a success message to authSever
             MessageHelpers.sendMessageTo(this.clientSocket, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_SUCCESS,
                     null, "Replica File Server", "tempServerKey", null, null));

@@ -22,6 +22,7 @@ public class PrimaryFileServer {
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
     private Connection fileDB;
 
+    private final int replicaCount;
     private ArrayList<InetSocketAddress> replicaServers;
     private HashMap<InetSocketAddress, Socket> replicaListeners;
 
@@ -64,6 +65,7 @@ public class PrimaryFileServer {
         this.fileDB.setAutoCommit(false);
 
         this.replicaServers = new ArrayList<InetSocketAddress>(replicaCount);
+        this.replicaCount = replicaCount;
         this.replicaListeners = new HashMap<InetSocketAddress, Socket>();
     }
 
@@ -74,18 +76,23 @@ public class PrimaryFileServer {
         // Attempt to establish Connection to all Replica Servers
         Socket tempSockt;
         InetSocketAddress tempAddr;
-        for (int i = 0; i < this.replicaServers.size(); ++i) {
+        for (int i = 0; i < replicaCount; ++i) {
             try {
+                System.err.println("Accepting Replica Connections");
                 tempSockt = this.replicaServerSocket.accept();
             } catch (IOException e) {
                 e.printStackTrace();
                 continue;
             }
             tempAddr = new InetSocketAddress(tempSockt.getInetAddress(), tempSockt.getLocalPort());
+            System.err.println("Accepted Connection from " + tempAddr);
             this.replicaServers.add(tempAddr);
             this.replicaListeners.put(tempAddr, tempSockt);
+            System.err.println("Starting Handler Thread");
             exceutionPool
                     .execute(new FromReplicaHandler(tempSockt, this.authServerAddr, this.fileDB, this.exceutionPool));
+            System.err.println("Started Handler Thread");
+
         }
 
         // Start File Cleanup thread
