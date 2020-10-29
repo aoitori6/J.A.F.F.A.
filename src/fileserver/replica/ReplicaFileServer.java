@@ -5,8 +5,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.sql.*;
 
 import message.AuthMessage;
@@ -16,10 +14,9 @@ import statuscodes.AuthStatus;
 public class ReplicaFileServer {
     private final static byte NTHREADS = 100;
     private final ExecutorService threadPool;
-    private final ScheduledExecutorService fileCleanup;
     private final ServerSocket fileServer;
-    private final ServerSocket authServerListener;
-    private static Socket authServer;
+    private final ServerSocket authServiceListener;
+    private static Socket authService;
     private Socket primaryFileServerSocket;
 
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
@@ -28,11 +25,11 @@ public class ReplicaFileServer {
     protected static synchronized boolean checkAuthToken(String clientName, String authToken) {
         AuthMessage response;
         try {
-            if (!MessageHelpers.sendMessageTo(ReplicaFileServer.authServer,
+            if (!MessageHelpers.sendMessageTo(ReplicaFileServer.authService,
                     new AuthMessage(AuthStatus.AUTH_CHECK, null, "File Server", clientName, authToken, false)))
                 return false;
 
-            response = (AuthMessage) MessageHelpers.receiveMessageFrom(ReplicaFileServer.authServer);
+            response = (AuthMessage) MessageHelpers.receiveMessageFrom(ReplicaFileServer.authService);
             if (response.getStatus() == AuthStatus.AUTH_VALID)
                 return true;
             else
@@ -61,10 +58,6 @@ public class ReplicaFileServer {
         // Thread Pool to allocate Tasks to
         this.threadPool = Executors.newFixedThreadPool(NTHREADS);
 
-        // Scheduled Executor Service that will be responsible for cleaning up deleted
-        // files
-        this.fileCleanup = Executors.newSingleThreadScheduledExecutor();
-
         // Initialize connection to File Database
         // TODO: Get this DB from admin; Remove hardcoding
         ReplicaFileServer.fileDB = DriverManager.getConnection(url, "root", "85246");
@@ -78,28 +71,19 @@ public class ReplicaFileServer {
         }
 
         // Initialize connection point to Auth Server
-        this.authServerListener = new ServerSocket(9696);
-        ReplicaFileServer.authServer = this.authServerListener.accept();
+        this.authServiceListener = new ServerSocket(9696);
+        ReplicaFileServer.authService = this.authServiceListener.accept();
     }
 
     public void start() throws IOException, SQLException {
         if (fileServer.equals(null))
             throw new NullPointerException("Error. File Server was not initialized!");
 
-        // Start File Cleanup thread
-        try {
-            fileCleanup.scheduleWithFixedDelay(new DeletionService(), 0, 20, TimeUnit.MINUTES);
-        } catch (Exception e) {
-            e.printStackTrace();
-            // Try to restart the Cleanup thread
-            fileCleanup.scheduleWithFixedDelay(new DeletionService(), 0, 20, TimeUnit.MINUTES);
-        }
-
         // Begin listening for new Socket connections
         while (!threadPool.isShutdown()) {
             try {
                 threadPool.execute(new ReplicaFileServerHandler(this.fileServer.accept(), ReplicaFileServer.fileDB,
-                        this.primaryFileServerSocket, ReplicaFileServer.authServer));
+                        this.primaryFileServerSocket, ReplicaFileServer.authService));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -109,8 +93,8 @@ public class ReplicaFileServer {
         this.fileServer.close();
         ReplicaFileServer.fileDB.close();
         this.threadPool.shutdown();
-        ReplicaFileServer.authServer.close();
-        this.authServerListener.close();
+        ReplicaFileServer.authService.close();
+        this.authServiceListener.close();
     }
 
     /**

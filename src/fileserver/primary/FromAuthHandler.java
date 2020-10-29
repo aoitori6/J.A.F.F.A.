@@ -2,6 +2,7 @@ package fileserver.primary;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
@@ -29,8 +31,7 @@ final class FromAuthHandler implements Runnable {
     private final Socket authServer;
     private final Connection fileDB;
 
-    private final static String HOME = System.getProperty("user.home");
-    private final static Path fileStorageFolder = Paths.get(HOME, "sharenow_primarydb");
+    private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
 
     FromAuthHandler(Socket authServer, Connection fileDB) {
         this.authServer = authServer;
@@ -88,7 +89,6 @@ final class FromAuthHandler implements Runnable {
      *                Message Specs
      * @expectedInstructionIDs: DOWNLOAD_REQUEST
      * @sentInstructionIDs: DOWNLOAD_REQUEST_VALID, DOWNLOAD_REQUEST_INVALID
-     * @expectedHeaders: code:Code
      */
     private void serverDownload(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
@@ -103,13 +103,14 @@ final class FromAuthHandler implements Runnable {
                         "SELECT Current_Threads, Deletion_Timestamp, Downloads_Remaining FROM file WHERE Code = ?");
 
                 // Querying DB for File details
-                query.setString(1, request.getHeaders().get("code"));
+                query.setString(1, request.getCode());
                 queryResp = query.executeQuery();
 
                 // Checking if File actually exists
                 if (!queryResp.next()) {
-                    MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(
-                            DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, "Primary File Server", "tempServerKey"));
+                    MessageHelpers.sendMessageTo(this.authServer,
+                            new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null,
+                                    "Primary File Server", "tempServerKey"));
                     return;
                 }
 
@@ -148,7 +149,7 @@ final class FromAuthHandler implements Runnable {
 
                 // Executing and comitting changes
                 query = this.fileDB.prepareStatement(queryString);
-                query.setString(1, request.getHeaders().get("code"));
+                query.setString(1, request.getCode());
                 query.executeUpdate();
                 query.close();
 
@@ -157,25 +158,25 @@ final class FromAuthHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL,
-                        null, "Primary File Server", "tempServerKey"));
+                        null, null, "Primary File Server", "tempServerKey"));
                 return;
             }
 
             // File can be downloaded
             if (canDownload) {
                 MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_VALID,
-                        null, "Primary File Server", "tempServerKey"));
+                        null, null, "Primary File Server", "tempServerKey"));
             }
 
             // File can't be downloaded
             else {
                 MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(
-                        DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, "Primary File Server", "tempServerKey"));
+                        DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, "Primary File Server", "tempServerKey"));
             }
 
         } else {
             MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL,
-                    null, "Primary File Server", "tempServerKey"));
+                    null, null, "Primary File Server", "tempServerKey"));
         }
     }
 
@@ -200,10 +201,10 @@ final class FromAuthHandler implements Runnable {
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
 
             // Check DB location in the File System to see if code already exists
-        } while (fileStorageFolder.resolve(tempCode).toFile().exists() == true);
+        } while (FILESTORAGEFOLDER_PATH.resolve(tempCode).toFile().exists() == true);
 
         // Creating new folder named with File Code and return the same
-        return Files.createDirectories(fileStorageFolder.resolve(tempCode));
+        return Files.createDirectories(FILESTORAGEFOLDER_PATH.resolve(tempCode));
     }
 
     /**
@@ -253,7 +254,7 @@ final class FromAuthHandler implements Runnable {
                 fileFromAuth = new BufferedInputStream(this.authServer.getInputStream());
 
                 // Temporary var to keep track of total bytes read
-                int _temp_t = 0;
+                long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
                 int _temp_c;
                 while (((_temp_c = fileFromAuth.read(readBuffer, 0, readBuffer.length)) != -1)
@@ -306,43 +307,6 @@ final class FromAuthHandler implements Runnable {
     }
 
     /**
-     * Helper function for deleteFile. Queries the associated File DB to see if the
-     * supplied File Code exists, and if the requester is allowed to delete it, it
-     * marks the file for deletion in the DB.
-     * 
-     * @param code    File Code to be deleted
-     * @param name    Name of the Client who requested deletion
-     * @param isAdmin Whether the Client is an admin
-     * @return
-     */
-    private boolean deleteFromDB(String code, String name, boolean isAdmin) {
-        PreparedStatement update;
-        boolean result = false;
-        try {
-            // Preparing Statement
-            if (isAdmin) {
-                update = fileDB.prepareStatement("UPDATE file SET deletable = TRUE WHERE code = ?");
-                update.setString(1, code);
-            } else {
-                update = fileDB.prepareStatement("UPDATE file SET deletable = TRUE WHERE code = ? AND uploader = ?");
-                update.setString(1, code);
-                update.setString(2, name);
-            }
-
-            // Executing Query and checking responses
-            if (update.executeUpdate() == 1)
-                result = true;
-
-            this.fileDB.commit();
-            update.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return result;
-    }
-
-    /**
      * Takes a DeleteMesage object from the Auth Server and queries the DB to see if
      * the File exists, and if the requesting Client can delete it. If the query is
      * successful, the File is deleted from both the File DB and the associated File
@@ -366,17 +330,64 @@ final class FromAuthHandler implements Runnable {
         if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
 
             // Attempt deletion from the File DB
-            if (deleteFromDB(request.getCode(), request.getSender(), request.checkAdmin())) {
-                MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null,
-                        null, "File Server", "tempServerKey", request.checkAdmin()));
-            } else {
-                MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_FAIL, null,
-                        null, "File Server", "tempServerKey", request.checkAdmin()));
+            PreparedStatement query = null;
+            boolean deleted = false;
+            try {
+                // Preparing Statement
+                if (request.checkAdmin()) {
+                    query = fileDB.prepareStatement("DELETE FROM file WHERE code = ?");
+                    query.setString(1, request.getCode());
+                } else {
+                    query = fileDB.prepareStatement("DELETE FROM file WHERE code = ? AND uploader = ?");
+                    query.setString(1, request.getCode());
+                    query.setString(2, request.getSender());
+                }
+
+                // Executing Query and checking responses
+                if (query.executeUpdate() == 1)
+                    deleted = true;
+
+                this.fileDB.commit();
+            } catch (Exception e) {
+                try {
+                    this.fileDB.rollback();
+                } catch (SQLException e1) {
+                    e1.printStackTrace();
+                }
+            } finally {
+                if (query != null)
+                    try {
+                        query.close();
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
             }
 
+            // If it wasn't deleted from DB
+            if (!deleted) {
+                MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null,
+                        "File Server", "tempServerKey", request.checkAdmin()));
+            }
+
+            // If it was, delete it from the File System too
+            Path toBeDeleted = FromAuthHandler.FILESTORAGEFOLDER_PATH.resolve(request.getCode());
+            try {
+                Files.walk(toBeDeleted).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null,
+                    "File Server", "tempServerKey", request.checkAdmin()));
+
+            // If directory wasn't deleted
+            if (Files.exists(toBeDeleted))
+                System.err.format("ERROR: File with Code %S was deleted from DB but not from  File System.%n",
+                        request.getCode());
+
         } else {
-            MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_INVALID, null,
-                    null, "File Server", "tempServerKey", request.checkAdmin()));
+            MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_INVALID, null, null,
+                    "File Server", "tempServerKey", request.checkAdmin()));
         }
     }
 
@@ -405,7 +416,7 @@ final class FromAuthHandler implements Runnable {
                 // Parsing Result
                 while (queryResp.next()) {
                     currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
-                            fileStorageFolder.resolve(queryResp.getString("code")).toFile().length(),
+                            FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile().length(),
                             queryResp.getString("uploader"),
                             Integer.parseInt(queryResp.getString("downloads_remaining")),
                             queryResp.getString("deletion_timestamp")));

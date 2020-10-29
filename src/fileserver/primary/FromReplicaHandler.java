@@ -5,6 +5,7 @@ import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -12,6 +13,7 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
 
 import misc.FileInfo;
 import message.*;
@@ -21,14 +23,19 @@ import statuscodes.SyncUploadStatus;
 
 final class FromReplicaHandler implements Runnable {
     private final Socket replicaServer;
+    private final InetSocketAddress authServerAddr;
     private final Connection fileDB;
 
-    private final static String HOME = System.getProperty("user.home");
-    private final static Path fileStorageFolder = Paths.get(HOME, "sharenow_primarydb");
+    private final ExecutorService exceutionPool;
 
-    FromReplicaHandler(Socket replicaServer, Connection fileDB) {
+    private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
+
+    FromReplicaHandler(Socket replicaServer, InetSocketAddress authServerAddr, Connection fileDB,
+            ExecutorService exceutionPool) {
         this.replicaServer = replicaServer;
+        this.authServerAddr = authServerAddr;
         this.fileDB = fileDB;
+        this.exceutionPool = exceutionPool;
     }
 
     @Override
@@ -87,22 +94,57 @@ final class FromReplicaHandler implements Runnable {
      */
     private void resolveDownloadEffects(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_SUCCESS) {
-            try (PreparedStatement query = this.fileDB.prepareStatement(
-                    "UPDATE file SET Downloads_Remaining = Downloads_Remaining-1, Current_Threads = Current_Threads-1,"
-                            + "Deletable = IF(Downloads_Remaining <= 0, TRUE, Deletable) WHERE Code = ?");) {
+            PreparedStatement query = null;
+            boolean deletable = false;
+            try {
+                // Update Downloads Remaining, Current Threads and Deletable if applicable
+                query = this.fileDB.prepareStatement(
+                        "UPDATE file SET Downloads_Remaining = Downloads_Remaining-1, Current_Threads = Current_Threads-1,"
+                                + "Deletable = IF(Downloads_Remaining <= 0, TRUE, Deletable) WHERE Code = ?");
+                query.setString(1, request.getCode());
                 query.executeUpdate();
+                query.close();
+
+                // Check if the File can be deleted
+                query = this.fileDB.prepareStatement(
+                        "SELECT Code, Deletable FROM file WHERE (Code = ? AND Deletable = TRUE AND Current_Threads = 0)");
+                query.setString(1, request.getCode());
+                ResultSet queryResp = query.executeQuery();
+
+                // If File can be deleted
+                if (queryResp.next())
+                    deletable = true;
+
                 this.fileDB.commit();
+
             } catch (Exception e) {
                 e.printStackTrace();
                 return;
+            } finally {
+                try {
+                    if (query != null)
+                        query.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
+
+            // If File is deletable, send a Delete request to Auth Server to ensure deletion
+            // is sync'd
+            if (deletable)
+                this.exceutionPool.submit(new DeletionToAuth(this.authServerAddr, request.getCode()));
+
         }
 
         else if (request.getStatus() == DownloadStatus.DOWNLOAD_FAIL) {
+            // Update Current Threads
             try (PreparedStatement query = this.fileDB
                     .prepareStatement("UPDATE file SET Current_Threads = Current_Threads-1 WHERE Code = ?");) {
+
+                query.setString(1, request.getCode());
                 query.executeUpdate();
                 this.fileDB.commit();
+
             } catch (Exception e) {
                 e.printStackTrace();
                 return;
@@ -120,10 +162,8 @@ final class FromReplicaHandler implements Runnable {
      * 
      *                <p>
      *                Message Specs
-     * @expectedInstructionIDs: UPLOAD_REQUEST
-     * @sentInstructionIDs: UPLOAD_START, UPLOAD_REQUEST_FAIL,
-     *                      UPLOAD_REQUEST_INVALID
-     * @expectedHeaders: code:Code
+     * @expectedInstructionIDs: SYNCUPLOAD_REQUEST
+     * @sentInstructionIDs: SYNCUPLOAD_START, SYNCUPLOAD_REQUEST_FAIL,
      */
     private void sendLocalFile(SyncUploadMessage request) {
         if (request.getStatus() == SyncUploadStatus.SYNCUPLOAD_REQUEST) {
@@ -136,14 +176,14 @@ final class FromReplicaHandler implements Runnable {
                 ResultSet queryResp = query.executeQuery();
 
                 if (!queryResp.next()) {
-                    MessageHelpers.sendMessageTo(this.replicaServer,
-                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Primary File Server",
-                                    "tempToken", null, null));
+                    MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(
+                            SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Primary File Server", "tempToken", null, null));
                     return;
                 }
 
                 fileInfo = new FileInfo(queryResp.getString("Filename"), queryResp.getString("Code"),
-                        FromReplicaHandler.fileStorageFolder.resolve(queryResp.getString("Code")).toFile().length(),
+                        FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")).toFile()
+                                .length(),
                         queryResp.getString("Uploader"), queryResp.getInt("Downloads_Remaining"), "Deletion_Timestamp");
                 this.fileDB.commit();
 
@@ -156,7 +196,7 @@ final class FromReplicaHandler implements Runnable {
 
             // Signal Replica to prepare for transfer
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_START,
-                    null, "Primary File Server", "tempToken", null, fileInfo));
+                    null, "Primary File Server", "tempToken", fileInfo.getCode(), fileInfo));
 
             // Prep for File transfer
             int buffSize = 1_048_576;
@@ -164,13 +204,13 @@ final class FromReplicaHandler implements Runnable {
             BufferedOutputStream fileToReplica = null;
 
             try (BufferedInputStream fileFromDB = new BufferedInputStream(new FileInputStream(
-                    FromReplicaHandler.fileStorageFolder.resolve(fileInfo.getCode()).toString()));) {
+                    FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode()).toString()));) {
 
                 // Begin connecting to file Server and establish read/write Streams
                 fileToReplica = new BufferedOutputStream(this.replicaServer.getOutputStream());
 
                 // Temporary var to keep track of total bytes read
-                int _temp_t = 0;
+                long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
                 int _temp_c;
                 while (((_temp_c = fileFromDB.read(readBuffer, 0, readBuffer.length)) != -1)
@@ -222,7 +262,7 @@ final class FromReplicaHandler implements Runnable {
                 // Parsing Result
                 while (queryResp.next()) {
                     currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
-                            fileStorageFolder.resolve(queryResp.getString("code")).toFile().length(),
+                            FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile().length(),
                             queryResp.getString("uploader"),
                             Integer.parseInt(queryResp.getString("downloads_remaining")),
                             queryResp.getString("deletion_timestamp")));

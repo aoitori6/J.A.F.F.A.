@@ -7,6 +7,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -52,7 +55,7 @@ final public class AuthServerHandler implements Runnable {
      * looking at the status field.
      */
     public void run() {
-        listenLoop: while (true) {
+        listenLoop: while (!this.clientSocket.isClosed()) {
             // Expect a Message from the Client
             Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
 
@@ -131,6 +134,34 @@ final public class AuthServerHandler implements Runnable {
     }
 
     /**
+     * Helper function that takes the Client's password and hashes it with SHA-256
+     * for storage in the associated DB.
+     * 
+     * @param password Password received from the Client
+     * @return SHA-256 Hash of the password as a Hex String
+     */
+    private static synchronized String hashPassword(String password) {
+        byte[] hash = null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            hash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        StringBuilder hashedPassword = new StringBuilder(2 * hash.length);
+        for (int i = 0; i < hash.length; i++) {
+            String hex = Integer.toHexString(0xff & hash[i]);
+            if (hex.length() == 1) {
+                hashedPassword.append('0');
+            }
+            hashedPassword.append(hex);
+        }
+        return hashedPassword.toString();
+    }
+
+    /**
      * Takes a RegisterMessage object from the Client and tries to register the user
      * on the associated Client DB.
      * 
@@ -168,12 +199,14 @@ final public class AuthServerHandler implements Runnable {
             // Check Query Results
             if (nameValid) {
                 // If username is available, create new user in client DB with supplied password
+                // Hashing password
+                String hashedPass = AuthServerHandler.hashPassword(request.getHeaders().get("pass"));
                 try (PreparedStatement query = this.clientDB
                         .prepareStatement("INSERT INTO client(Username, Password) VALUES (?,?)")) {
 
                     // Create and execute query
                     query.setString(1, request.getSender());
-                    query.setString(2, request.getHeaders().get("pass"));
+                    query.setString(2, hashedPass);
 
                     // Checking if entry was inserted successfully
                     if (query.executeUpdate() == 1)
@@ -251,13 +284,16 @@ final public class AuthServerHandler implements Runnable {
             // username and password.
             // If it succeeds, user has been successfully logged in
             boolean validLogin = true;
+            // Hashing password
+            String hashedPass = request.getHeaders().get("pass");
+
             try (PreparedStatement query = this.clientDB
                     .prepareStatement("UPDATE client_database.client SET Login_Status = 'ONLINE', Auth_Code = ? "
                             + "WHERE (Username = ? AND Password = ?)")) {
 
                 query.setString(1, authToken);
                 query.setString(2, request.getSender());
-                query.setString(3, request.getHeaders().get("pass"));
+                query.setString(3, hashedPass);
 
                 if (query.executeUpdate() != 1) {
                     validLogin = false;
@@ -380,7 +416,7 @@ final public class AuthServerHandler implements Runnable {
             // Send a download request to the Primary File Server
             if (!MessageHelpers.sendMessageTo(this.primaryFileServerSocket, request)) {
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, "Auth Server", null));
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
                 return;
             }
 
@@ -392,7 +428,7 @@ final public class AuthServerHandler implements Runnable {
             if (castResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID) {
                 // If Primary File Server returned failure
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, "Auth Server", null));
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, "Auth Server", null));
                 return;
             } else {
                 // If Primary File Server returned Success
@@ -402,12 +438,12 @@ final public class AuthServerHandler implements Runnable {
                 headers.put("port", Integer.toString(replicaAddr.getPort()));
 
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_VALID, headers, "Auth Server", null));
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_VALID, null, headers, "Auth Server", null));
                 return;
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, "Auth Server", null));
+                    new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
             return;
         }
     }
@@ -513,7 +549,7 @@ final public class AuthServerHandler implements Runnable {
                     fileToServer = new BufferedOutputStream(primaryFileServerSocket.getOutputStream());
 
                     // Temporary var to keep track of total bytes read
-                    int _temp_t = 0;
+                    long _temp_t = 0;
                     // Temporary var to keep track of read Bytes
                     int _temp_c;
                     while ((_temp_c = fileFromClient.read(writeBuffer, 0, writeBuffer.length)) != -1

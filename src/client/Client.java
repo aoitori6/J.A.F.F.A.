@@ -145,17 +145,14 @@ public class Client {
      *                 Message Specs
      * @sentInstructionIDs: DOWNLOAD_REQUEST
      * @expectedInstructionIDs: DOWNLOAD_SUCCESS, DOWNLOAD_FAIL
-     * @sentHeaders: code:code
-     * @expectedHeaders: fileName:FileName
+     * @expectedHeaders: fileName:FileName, size:FileSize
      */
     public DownloadStatus downloadFile(String code, Path savePath) {
         // Adding the code to the headers
-        HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("code", code);
 
         // Sending a DownloadRequest to the AuthServer
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, this.name, this.authToken)))
+                new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, code, null, this.name, this.authToken)))
             return DownloadStatus.DOWNLOAD_REQUEST_FAIL;
 
         // Reading AuthServer's Response
@@ -182,7 +179,7 @@ public class Client {
         // Send a DownloadRequest to the File Server
         // Expect DOWNLOAD_START if file exists and all is successful
         if (!MessageHelpers.sendMessageTo(fileSocket,
-                new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, requestHeaders, name, this.authToken)))
+                new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, code, null, name, this.authToken)))
             return DownloadStatus.DOWNLOAD_FAIL;
 
         // Parse Response
