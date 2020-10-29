@@ -7,6 +7,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import statuscodes.*;
 
@@ -26,13 +28,36 @@ final public class InterfaceClient {
     static Client client = null;
 
     private static boolean register() {
+        String username, password;
+        while (true) {
+            System.out.println("Enter Username");
+            username = conInput.nextLine();
 
-        System.out.println("Enter Username");
-        String username = conInput.nextLine();
+            Pattern pattern = Pattern.compile("[^a-zA-Z0-9]");
+            Matcher matcher = pattern.matcher(username.trim());
 
-        System.out.println("Enter Password");
-        String password = conInput.nextLine();
+            if (username.trim().length() < 3 || username.trim().length() > 30) {
+                System.out.println("Username should be between 3 and 30 characters long");
+            } else if (matcher.find()) {
+                System.out.println("Username should consist of only alphabets and numbers");
+            } else
+                break;
+        }
 
+        while (true) {
+            System.out.println("Enter Password");
+            password = conInput.nextLine();
+
+            Pattern pattern = Pattern.compile("[^a-zA-Z0-9]");
+            Matcher matcher = pattern.matcher(password.trim());
+
+            if (username.trim().length() < 6) {
+                System.out.println("Password should be atleast 6 characters long");
+            } else if (matcher.find()) {
+                System.out.println("Password should consist of only alphabets and numbers");
+            } else
+                break;
+        }
         System.out.println("Confirm Password");
         String confirmPassword = conInput.nextLine();
 
@@ -41,7 +66,7 @@ final public class InterfaceClient {
             return false;
         }
 
-        return client.register(username, password);
+        return client.register(username.trim(), password.trim());
     }
 
     private static boolean logIn() {

@@ -132,7 +132,7 @@ final class FromReplicaHandler implements Runnable {
             FileInfo fileInfo;
             try (PreparedStatement query = this.fileDB.prepareStatement("SELECT * FROM file WHERE Code = ?");) {
 
-                query.setString(1, request.getHeaders().get("code"));
+                query.setString(1, request.getFileCode());
                 ResultSet queryResp = query.executeQuery();
 
                 if (!queryResp.next()) {
