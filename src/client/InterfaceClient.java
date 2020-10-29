@@ -51,7 +51,7 @@ final public class InterfaceClient {
             Pattern pattern = Pattern.compile("[^a-zA-Z0-9]");
             Matcher matcher = pattern.matcher(password.trim());
 
-            if (username.trim().length() < 6) {
+            if (password.trim().length() < 6) {
                 System.out.println("Password should be atleast 6 characters long");
             } else if (matcher.find()) {
                 System.out.println("Password should consist of only alphabets and numbers");
@@ -186,14 +186,15 @@ final public class InterfaceClient {
         byte choice;
 
         // Getting AuthServer Address
-        System.out.println("Enter Address of Authentication Server");
-        String address = conInput.nextLine();
-
-        System.out.println("Enter Port of Authentication Server");
-        int port = conInput.nextInt();
-        conInput.nextLine();
-
-        // TODO: Check validity of Port and Address
+        /*
+         * System.out.println("Enter Address of Authentication Server"); String address
+         * = conInput.nextLine();
+         * 
+         * System.out.println("Enter Port of Authentication Server"); int port =
+         * conInput.nextInt(); conInput.nextLine();
+         */
+        String address = "localhost";
+        int port = 9000;
 
         // Connecting to AuthServer
         client = new Client(address, port);

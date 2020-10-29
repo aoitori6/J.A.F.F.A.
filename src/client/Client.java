@@ -217,11 +217,15 @@ public class Client {
             fileFromServer = new BufferedInputStream(fileSocket.getInputStream());
             fileOnClient = new BufferedOutputStream(new FileOutputStream(savePath.toString()));
 
+            // Temporary var to keep track of total bytes read
+            long _temp_t = 0;
             // Temporary var to keep track of read Bytes
             int _temp_c;
-            while ((_temp_c = fileFromServer.read(writeBuffer, 0, writeBuffer.length)) != -1) {
+            while (((_temp_c = fileFromServer.read(writeBuffer, 0, writeBuffer.length)) != -1)
+                    || (_temp_t <= Integer.parseInt(responseHeaders.get("fileSize")))) {
                 fileOnClient.write(writeBuffer, 0, _temp_c);
                 fileOnClient.flush();
+                _temp_t += _temp_c;
             }
 
             // File successfully downloaded
@@ -238,7 +242,6 @@ public class Client {
             fileFromServer = null;
             fileOnClient = null;
         }
-
     }
 
     /**
@@ -284,9 +287,12 @@ public class Client {
             fileOnClient = new BufferedInputStream(new FileInputStream(filePath.toString()));
             fileToServer = new BufferedOutputStream(this.authSocket.getOutputStream());
 
+            // Temporary var to keep track of total bytes read
+            long _temp_t = 0;
             // Temporary var to keep track of read Bytes
             int _temp_c;
-            while ((_temp_c = fileOnClient.read(writeBuffer, 0, writeBuffer.length)) != -1) {
+            while (((_temp_c = fileOnClient.read(writeBuffer, 0, writeBuffer.length)) != -1)
+                    || (_temp_t <= filePath.toFile().length())) {
                 fileToServer.write(writeBuffer, 0, _temp_c);
                 fileToServer.flush();
             }

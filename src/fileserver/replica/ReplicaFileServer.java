@@ -61,7 +61,7 @@ public class ReplicaFileServer {
         // Initialize connection to File Database
         // TODO: Get this DB from admin; Remove hardcoding
         this.fileDB = DriverManager.getConnection(url, "root", "85246");
-        this.fileDB.setAutoCommit(true);
+        this.fileDB.setAutoCommit(false);
 
         // Try to connect to the Primary File Server
         try {
