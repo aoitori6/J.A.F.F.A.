@@ -183,13 +183,12 @@ final public class InterfaceClient {
 
     private static void getAllFileData(Admin admin) {
         ArrayList<FileInfo> allFilesInfo = admin.getAllFileData();
-
         if (allFilesInfo != null) {
             for (FileInfo fileInfo : allFilesInfo) {
                 System.out.println("Uploader: " + fileInfo.getUploader());
                 System.out.println("File Name: " + fileInfo.getName());
                 System.out.println("Code: " + fileInfo.getCode());
-                System.out.println("Downloads Remaining: " + fileInfo.getDownloadsRemaining().toString());
+                System.out.println("Downloads Remaining: " + fileInfo.getDownloadsRemaining());
                 System.out.println("Deletion TimeStamp: " + fileInfo.getDeletionTimestamp());
                 System.out.println("");
             }

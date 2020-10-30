@@ -22,6 +22,7 @@ import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
+import fileserver.primary.PrimaryFileServer;
 import message.*;
 import misc.FileInfo;
 import statuscodes.DeleteStatus;
@@ -61,7 +62,7 @@ final public class AuthServerHandler implements Runnable {
         listenLoop: while (!this.clientSocket.isClosed()) {
             // Expect a Message from the Client
             Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
-
+            System.out.println(request);
             // Central Logic
             // Execute different methods after checking Message status
 
@@ -153,6 +154,7 @@ final public class AuthServerHandler implements Runnable {
         HashMap<String, Boolean> resp = new HashMap<String, Boolean>(2);
         try (PreparedStatement query = this.clientDB
                 .prepareStatement("SELECT Admin_Status FROM client WHERE Username = ? AND Login_Status = 'ONLINE'");) {
+            query.setString(1, client);
             ResultSet queryResp = query.executeQuery();
 
             if (queryResp.next()) {
@@ -296,7 +298,7 @@ final public class AuthServerHandler implements Runnable {
 
         // Check if valid Login Request
         if (request.getStatus() == LoginStatus.LOGIN_REQUEST) {
-                
+
             // Generate Auth Token first
             String authToken = null;
             try {
@@ -735,12 +737,14 @@ final public class AuthServerHandler implements Runnable {
         if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
             // Check Auth Token
             // If not valid
-            HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
-            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
-                return;
-            }
+            // HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(),
+            // request.getAuthToken());
+            // if (!authResp.get("valid") && !authResp.get("isAdmin")) {
+            // MessageHelpers.sendMessageTo(this.clientSocket,
+            // new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null,
+            // false));
+            // return;
+            // }
 
             // TODO: Check Auth Token
             // Establishing connection to Primary File Server
@@ -749,7 +753,7 @@ final public class AuthServerHandler implements Runnable {
                 // Forward delete request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(primaryFileSocket,
                         new DeleteMessage(request.getStatus(), request.getCode(), request.getHeaders(),
-                                request.getSender(), request.getAuthToken(), authResp.get("isAdmin")))) {
+                                request.getSender(), request.getAuthToken(), /* authResp.get("isAdmin") */ true))) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
                             new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
                     return;
@@ -850,15 +854,17 @@ final public class AuthServerHandler implements Runnable {
                     toClient = new ObjectOutputStream(this.clientSocket.getOutputStream());
                     fromPrimaryServer = new ObjectInputStream(primaryFileSocket.getInputStream());
 
-                    for (int i = 0; i < count; ++i)
-                        toClient.writeObject((FileInfo) fromPrimaryServer.readObject());
-
+                    for (int i = 0; i < count; ++i) {
+                        FileInfo temp = (FileInfo) fromPrimaryServer.readObject();
+                        toClient.writeObject(temp);
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;
                 } finally {
                     toClient = null;
                     fromPrimaryServer = null;
+                    primaryFileSocket.close();
                 }
             } catch (IOException e) {
                 e.printStackTrace();
