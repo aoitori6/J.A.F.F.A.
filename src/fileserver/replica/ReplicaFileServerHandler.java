@@ -14,6 +14,7 @@ import java.nio.file.Paths;
 import java.sql.*;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.stream.Stream;
 
 import message.*;
 import misc.FileInfo;
@@ -316,9 +317,23 @@ final public class ReplicaFileServerHandler implements Runnable {
 
             // Attempt recursive deletion from the Filesystem
             Path toBeDeleted = ReplicaFileServerHandler.FILESTORAGEFOLDER_PATH.resolve(request.getFileCode());
-            try {
-                Files.walk(toBeDeleted).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            try (Stream<Path> elements = Files.walk(toBeDeleted)) {
+                elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException e) {
+                e.printStackTrace();
+                System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
+            }
+
+            try (PreparedStatement query = this.fileDB.prepareStatement("DELETE FROM file WHERE Code = ?")) {
+                query.setString(1, request.getFileCode());
+                query.executeUpdate();
+                this.fileDB.commit();
+            } catch (Exception e) {
+                try {
+                    this.fileDB.rollback();
+                } catch (SQLException e1) {
+                    e1.printStackTrace();
+                }
                 e.printStackTrace();
             }
 

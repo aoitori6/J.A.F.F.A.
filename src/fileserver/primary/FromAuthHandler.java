@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.stream.Stream;
 
 import misc.FileInfo;
 import message.*;
@@ -383,10 +384,11 @@ final class FromAuthHandler implements Runnable {
 
             // If it was, delete it from the File System too
             Path toBeDeleted = FromAuthHandler.FILESTORAGEFOLDER_PATH.resolve(request.getCode());
-            try {
-                Files.walk(toBeDeleted).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            try (Stream<Path> elements = Files.walk(toBeDeleted)) {
+                elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException e) {
                 e.printStackTrace();
+                System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
             }
 
             MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null,
