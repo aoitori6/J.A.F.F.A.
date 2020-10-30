@@ -120,7 +120,7 @@ final class FromAuthHandler implements Runnable {
 
                 // Check if timestamp has been exceeded
                 if (timestamp != null) {
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
                     LocalDateTime deletionTimestamp = LocalDateTime.parse(timestamp, formatter);
                     if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp))
                         toDelete = true;

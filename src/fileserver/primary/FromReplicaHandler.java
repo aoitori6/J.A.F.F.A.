@@ -26,16 +26,16 @@ final class FromReplicaHandler implements Runnable {
     private final InetSocketAddress authServerAddr;
     private final Connection fileDB;
 
-    private final ExecutorService exceutionPool;
+    private final ExecutorService executionPool;
 
     private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
 
     FromReplicaHandler(Socket replicaServer, InetSocketAddress authServerAddr, Connection fileDB,
-            ExecutorService exceutionPool) {
+            ExecutorService executionPool) {
         this.replicaServer = replicaServer;
         this.authServerAddr = authServerAddr;
         this.fileDB = fileDB;
-        this.exceutionPool = exceutionPool;
+        this.executionPool = executionPool;
     }
 
     @Override
@@ -45,30 +45,28 @@ final class FromReplicaHandler implements Runnable {
      * as required by looking at the status field.
      */
     public void run() {
-        while (!this.replicaServer.isClosed()) {
-            // Expect a Message from the Client
-            System.err.println("ReplicaHandle: Expecting Message");
-            Message request = MessageHelpers.receiveMessageFrom(this.replicaServer);
-            System.err.println("ReplicaHandle: Got Message");
+        // Expect a Message from the Client
+        System.err.println("ReplicaHandle: Expecting Message");
+        Message request = MessageHelpers.receiveMessageFrom(this.replicaServer);
+        System.err.println("ReplicaHandle: Got Message");
 
-            // Central Logic
-            // Execute different methods after checking Message status
+        // Central Logic
+        // Execute different methods after checking Message status
 
-            switch (request.getRequestKind()) {
-                case Download:
-                    resolveDownloadEffects((DownloadMessage) request);
-                    break;
-                case SyncUpload:
-                    sendLocalFile((SyncUploadMessage) request);
-                    break;
-                case FileDetails:
-                    getAllFileData((FileDetailsMessage) request);
-                    break;
-                default:
-                    break;
-            }
-
+        switch (request.getRequestKind()) {
+            case Download:
+                resolveDownloadEffects((DownloadMessage) request);
+                break;
+            case SyncUpload:
+                sendLocalFile((SyncUploadMessage) request);
+                break;
+            case FileDetails:
+                getAllFileData((FileDetailsMessage) request);
+                break;
+            default:
+                break;
         }
+
         try {
             this.replicaServer.close();
         } catch (IOException e) {
@@ -134,7 +132,7 @@ final class FromReplicaHandler implements Runnable {
             // If File is deletable, send a Delete request to Auth Server to ensure deletion
             // is sync'd
             if (deletable)
-                this.exceutionPool.submit(new DeletionToAuth(this.authServerAddr, request.getCode()));
+                this.executionPool.submit(new DeletionToAuth(this.authServerAddr, request.getCode()));
 
         }
 
@@ -224,10 +222,7 @@ final class FromReplicaHandler implements Runnable {
                     fileToReplica.flush();
                     _temp_t += _temp_c;
                 }
-                // File transfer done
-                System.err.println("File Transfer Done");
-                MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(
-                        SyncUploadStatus.SYNCUPLOAD_SUCCESS, null, "File Server", "tempServerKey", null, null));
+
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
@@ -239,6 +234,10 @@ final class FromReplicaHandler implements Runnable {
                     fileToReplica = null;
             }
 
+            // File transfer done
+            System.err.println("File Transfer Done");
+            MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_SUCCESS,
+                    null, "File Server", "tempServerKey", null, null));
         } else {
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
                     null, "Primary File Server", "tempToken", null, null));

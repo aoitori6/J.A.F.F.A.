@@ -1,6 +1,7 @@
 package fileserver.replica;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
@@ -17,7 +18,7 @@ public class ReplicaFileServer {
     private final ServerSocket fileServer;
     private final ServerSocket authServiceListener;
     private static Socket authService;
-    private Socket primaryFileServerSocket;
+    private final InetSocketAddress primaryServerAddr = new InetSocketAddress("localhost", 12600);
 
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
     private final Connection fileDB;
@@ -63,13 +64,6 @@ public class ReplicaFileServer {
         this.fileDB = DriverManager.getConnection(url, "root", "85246");
         this.fileDB.setAutoCommit(false);
 
-        // Try to connect to the Primary File Server
-        try {
-            this.primaryFileServerSocket = new Socket("localhost", 12600);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
         // Initialize connection point to Auth Server
         this.authServiceListener = new ServerSocket(9696);
         ReplicaFileServer.authService = this.authServiceListener.accept();
@@ -83,7 +77,7 @@ public class ReplicaFileServer {
         while (!threadPool.isShutdown()) {
             try {
                 threadPool.execute(new ReplicaFileServerHandler(this.fileServer.accept(), this.fileDB,
-                        this.primaryFileServerSocket, ReplicaFileServer.authService));
+                        this.primaryServerAddr, ReplicaFileServer.authService));
             } catch (IOException e) {
                 e.printStackTrace();
             }

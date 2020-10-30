@@ -19,14 +19,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.stream.Stream;
 
 class DeletionService implements Runnable {
-    private final ExecutorService exceutionPool;
+    private final ExecutorService executionPool;
     private final Connection fileDB;
     private InetSocketAddress authServerAddr;
 
     private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
 
     DeletionService(ExecutorService executionPool, InetSocketAddress authServerAddr, Connection fileDB) {
-        this.exceutionPool = executionPool;
+        this.executionPool = executionPool;
         this.authServerAddr = authServerAddr;
         this.fileDB = fileDB;
     }
@@ -83,7 +83,7 @@ class DeletionService implements Runnable {
                 System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
                 continue;
             }
-            this.exceutionPool.submit(new DeletionToAuth(this.authServerAddr, toBeDeleted.getFileName().toString()));
+            this.executionPool.submit(new DeletionToAuth(this.authServerAddr, toBeDeleted.getFileName().toString()));
         }
 
     }
