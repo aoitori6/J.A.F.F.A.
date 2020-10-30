@@ -6,10 +6,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import adminclient.Admin;
+import misc.FileInfo;
 import statuscodes.*;
 
 final public class InterfaceClient {
@@ -24,10 +27,7 @@ final public class InterfaceClient {
     // Path to User's Home
     final static String HOME = System.getProperty("user.home");
 
-    // Client Object tied with User Interface
-    static Client client = null;
-
-    private static boolean register() {
+    private static boolean register(Client client) {
         String username, password;
         while (true) {
             System.out.println("Enter Username");
@@ -69,7 +69,7 @@ final public class InterfaceClient {
         return client.register(username.trim(), password.trim());
     }
 
-    private static boolean logIn() {
+    private static boolean logIn(Client client, boolean isAdmin) {
 
         System.out.println("Enter Username");
         String username = conInput.nextLine();
@@ -77,10 +77,10 @@ final public class InterfaceClient {
         System.out.println("Enter Password");
         String password = conInput.nextLine();
 
-        return client.logIn(username, password);
+        return client.logIn(username, password, isAdmin);
     }
 
-    private static void downloadFile() {
+    private static void downloadFile(Client client) {
 
         /*
          * TODO: Check valid File Paths, Check existing Files, Check File Path for Linux
@@ -105,7 +105,7 @@ final public class InterfaceClient {
             System.out.println("ERROR. Failed to Download File");
     }
 
-    private static void uploadFile() {
+    private static void uploadFile(Client client) {
 
         String timestamp;
         String downloads;
@@ -151,7 +151,7 @@ final public class InterfaceClient {
             System.out.println("Enter the no.of minutes: ");
             int minutes = conInput.nextInt();
 
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
             LocalDateTime ldt = LocalDateTime.now(ZoneId.of("UTC"));
             long totalMinutes = days * 24 * 60 + hours * 60 + minutes;
 
@@ -169,7 +169,7 @@ final public class InterfaceClient {
             System.out.println("ERROR. Failed to Upload File");
     }
 
-    private static void deleteFile() {
+    private static void deleteFile(Client client) {
 
         // Get File Code
         System.out.println("Enter File Code");
@@ -181,9 +181,24 @@ final public class InterfaceClient {
             System.out.println("ERROR. Failed to Delete File");
     }
 
-    // Main User Interface
-    public static void main(String[] args) {
+    private static void getAllFileData(Admin admin) {
+        ArrayList<FileInfo> allFilesInfo = admin.getAllFileData();
+
+        if (allFilesInfo != null) {
+            for (FileInfo fileInfo : allFilesInfo) {
+                System.out.println("Uploader: " + fileInfo.getUploader());
+                System.out.println("File Name: " + fileInfo.getName());
+                System.out.println("Code: " + fileInfo.getCode());
+                System.out.println("Downloads Remaining: " + fileInfo.getDownloadsRemaining().toString());
+                System.out.println("Deletion TimeStamp: " + fileInfo.getDeletionTimestamp());
+                System.out.println("");
+            }
+        }
+    }
+
+    private static void clientMenu() {
         byte choice;
+        Client client = null;
 
         // Getting AuthServer Address
         /*
@@ -201,64 +216,159 @@ final public class InterfaceClient {
         if (client == null)
             return;
 
-        program: while (true) {
-            // Authenticating Client
-            // TODO: Handle Bad Logins
-            auth: while (true) {
-                System.out.println("1. Register");
-                System.out.println("2. Login");
-                System.out.println("3. Exit");
-                choice = conInput.nextByte();
-                conInput.nextLine();
-
-                switch (choice) {
-                    case 1:
-                        if (register())
-                            break auth;
-                        break;
-                    case 2:
-                        if (logIn())
-                            break auth;
-                        break;
-                    case 3:
-                        break program;
-                    default:
-                        System.out.println("ERROR. Invalid Choice");
-                }
+        // Authenticating Client
+        // TODO: Handle Bad Logins
+        auth: while (true) {
+            System.out.println("1. Register");
+            System.out.println("2. Login");
+            System.out.println("3. Exit");
+            choice = conInput.nextByte();
+            conInput.nextLine();
+            switch (choice) {
+                case 1:
+                    if (register(client))
+                        break auth;
+                    break;
+                case 2:
+                    if (logIn(client, false))
+                        break auth;
+                    else
+                        System.out.println("ERROR. Login Failed");
+                    break;
+                case 3:
+                    return;
+                default:
+                    System.out.println("ERROR. Invalid Choice");
             }
+        }
 
-            // Main Menu
-            menu: while (true) {
-                System.out.println("1. Download File");
-                System.out.println("2. Upload File");
-                System.out.println("3. Delete File");
-                System.out.println("4. Logout");
-                System.out.println("Enter your Choice");
-                choice = conInput.nextByte();
-                conInput.nextLine();
+        while (true) {
+            System.out.println("1. Download File");
+            System.out.println("2. Upload File");
+            System.out.println("3. Delete File");
+            System.out.println("4. Logout");
+            System.out.println("Enter your Choice");
+            choice = conInput.nextByte();
+            conInput.nextLine();
 
-                switch (choice) {
-                    case 1:
-                        downloadFile();
+            switch (choice) {
+                case 1:
+                    downloadFile(client);
+                    break;
+                case 2:
+                    uploadFile(client);
+                    break;
+                case 3:
+                    deleteFile(client);
+                    break;
+                case 4:
+                    if (client.logout()) {
+                        System.out.println("Logged Out");
+                        return;
+                    } else {
+                        System.out.println("Logging Out Failed");
                         break;
-                    case 2:
-                        uploadFile();
-                        break;
-                    case 3:
-                        deleteFile();
-                        break;
-                    case 4:
-                        if (client.logout()) {
-                            System.out.println("Logged Out");
-                            break menu;
-                        } else {
-                            System.out.println("Logging Out Failed");
-                            break;
-                        }
-                    default:
-                        System.out.println("ERROR. Invalid Choice");
-                }
+                    }
+                default:
+                    System.out.println("ERROR. Invalid Choice");
             }
+        }
+    }
+
+    private static void adminMenu() {
+        byte choice;
+        Admin admin = null;
+
+        // Getting AuthServer Address
+        /*
+         * System.out.println("Enter Address of Authentication Server"); String address
+         * = conInput.nextLine();
+         * 
+         * System.out.println("Enter Port of Authentication Server"); int port =
+         * conInput.nextInt(); conInput.nextLine();
+         */
+        String address = "localhost";
+        int port = 9000;
+
+        // Connecting to AuthServer
+        admin = new Admin(address, port);
+        if (admin == null)
+            return;
+
+        // Authenticating Client
+        // TODO: Handle Bad Logins
+        auth: while (true) {
+            System.out.println("1. Login");
+            System.out.println("2. Exit");
+            choice = conInput.nextByte();
+            conInput.nextLine();
+            switch (choice) {
+                case 1:
+                    if (logIn(admin, true))
+                        break auth;
+                    else
+                        System.out.println("ERROR. Login Failed");
+                    break;
+                case 2:
+                    return;
+                default:
+                    System.out.println("ERROR. Invalid Choice");
+            }
+        }
+
+        while (true) {
+            System.out.println("1. Download File");
+            System.out.println("2. Upload File");
+            System.out.println("3. Delete File");
+            System.out.println("4. View All Files");
+            System.out.println("5. Logout");
+            System.out.println("Enter your Choice");
+            choice = conInput.nextByte();
+            conInput.nextLine();
+
+            switch (choice) {
+                case 1:
+                    downloadFile(admin);
+                    break;
+                case 2:
+                    uploadFile(admin);
+                    break;
+                case 3:
+                    deleteFile(admin);
+                    break;
+                case 4:
+                    getAllFileData(admin);
+                    break;
+                case 5:
+                    if (admin.logout()) {
+                        System.out.println("Logged Out");
+                        return;
+                    } else {
+                        System.out.println("Logging Out Failed");
+                        break;
+                    }
+                default:
+                    System.out.println("ERROR. Invalid Choice");
+            }
+        }
+    }
+
+    // Main User Interface
+    public static void main(String[] args) {
+        while (true) {
+            byte choice;
+
+            System.out.println("Enter 1 for admin account, 2 for normal user: ");
+            choice = conInput.nextByte();
+            if (choice == 1)
+                adminMenu();
+            else
+                clientMenu();
+
+            System.out.println("Enter 1 to exit the program, 2 to continue");
+            choice = conInput.nextByte();
+            if (choice == 1)
+                break;
         }
         return;
     }

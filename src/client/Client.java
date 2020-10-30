@@ -15,6 +15,7 @@ import misc.FileInfo;
 import statuscodes.*;
 
 public class Client {
+    protected boolean isAdmin;
 
     protected String name;
     protected Socket authSocket;
@@ -58,7 +59,7 @@ public class Client {
             return false;
 
         // Logging in user
-        if (logIn(name, pass) == false)
+        if (logIn(name, pass, false) == false)
             System.err.println("Critical ERROR. User registered but couldn't login!");
 
         return true;
@@ -77,10 +78,10 @@ public class Client {
      * @expectedHeaders: authToken:authToken (null if LOGIN_FAIL)
      */
 
-    public boolean logIn(String name, String pass) {
+    public boolean logIn(String name, String pass, boolean isAdmin) {
         // Sending login Message
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new LoginMessage(LoginStatus.LOGIN_REQUEST, pass, false, authToken, null, name)))
+                new LoginMessage(LoginStatus.LOGIN_REQUEST, pass, isAdmin, authToken, null, name)))
             return false;
 
         // Reading AuthServer's response
@@ -93,9 +94,9 @@ public class Client {
             return false;
 
         // Setting authToken if true
-        HashMap<String, String> responseHeaders = castResponse.getHeaders();
-        this.authToken = responseHeaders.get("authToken");
+        this.authToken = castResponse.getAuthToken();
         this.name = name;
+        this.isAdmin = castResponse.getIfAdmin();
 
         return true;
     }
@@ -113,7 +114,7 @@ public class Client {
 
         // Sending Logout Message to AuthServer
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, authToken, null, name)))
+                new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, this.authToken, null, this.name)))
             return false;
 
         // Reading AuthServer's response
