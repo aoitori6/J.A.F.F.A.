@@ -257,18 +257,11 @@ final public class ReplicaFileServerHandler implements Runnable {
                             null, "Replica File Server", "tempServerKey", null, null));
                     return;
                 } finally {
-                    System.err.println(fileFromPrimaryFileServer.available());
+                    System.err.println("File Transfer Done from Primary Server");
+                    MessageHelpers.receiveMessageFrom(primarySocket);
                     readBuffer = null;
-                    //fileFromPrimaryFileServer = null;
+                    // fileFromPrimaryFileServer = null;
                 }
-                try {
-                    System.err.println(primarySocket.getInputStream().available());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-
-                System.err.println("File Transfer Done from Primary Server");
-                MessageHelpers.receiveMessageFrom(primarySocket);
 
                 // If file was successfully uploaded, add an entry to the File DB
                 try (PreparedStatement query = this.fileDB
