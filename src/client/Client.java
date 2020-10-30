@@ -40,18 +40,13 @@ public class Client {
      *             Message Specs
      * @sentInstructionIDs: REGISTER_REQUEST
      * @expectedInstructionIDs: REGISTER_SUCCESS, REGISTER_FAIL
-     * @sentHeaders: pass:Password
      */
 
     public boolean register(String name, String pass) {
-        // Sending Register Message with Username and Password as Headers
-        HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("pass", pass);
-
+        // Sending Register Message
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new RegisterMessage(RegisterStatus.REGISTER_REQUEST, requestHeaders, name)))
+                new RegisterMessage(RegisterStatus.REGISTER_REQUEST, pass, null, name)))
             return false;
-        requestHeaders = null;
 
         // Reading AuthServer's response
         Message response = MessageHelpers.receiveMessageFrom(authSocket);
@@ -83,14 +78,10 @@ public class Client {
      */
 
     public boolean logIn(String name, String pass) {
-        // Sending login Message with Username and Password as Headers
-        HashMap<String, String> requestHeaders = new HashMap<String, String>();
-        requestHeaders.put("pass", pass);
-
+        // Sending login Message
         if (!MessageHelpers.sendMessageTo(authSocket,
-                new LoginMessage(LoginStatus.LOGIN_REQUEST, requestHeaders, name)))
+                new LoginMessage(LoginStatus.LOGIN_REQUEST, pass, false, authToken, null, name)))
             return false;
-        requestHeaders = null;
 
         // Reading AuthServer's response
         Message response = MessageHelpers.receiveMessageFrom(authSocket);
@@ -119,11 +110,10 @@ public class Client {
      */
 
     public boolean logout() {
-        HashMap<String, String> headers = new HashMap<String, String>(1);
-        headers.put("authToken", this.authToken);
 
         // Sending Logout Message to AuthServer
-        if (!MessageHelpers.sendMessageTo(authSocket, new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, headers, name)))
+        if (!MessageHelpers.sendMessageTo(authSocket,
+                new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, authToken, null, name)))
             return false;
 
         // Reading AuthServer's response

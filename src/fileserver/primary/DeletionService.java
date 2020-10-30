@@ -1,9 +1,6 @@
 package fileserver.primary;
 
-import java.io.File;
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -14,9 +11,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.concurrent.ExecutorService;
-import java.util.stream.Stream;
 
 class DeletionService implements Runnable {
     private final ExecutorService executionPool;

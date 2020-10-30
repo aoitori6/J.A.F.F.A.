@@ -139,6 +139,38 @@ final public class AuthServerHandler implements Runnable {
     }
 
     /**
+     * Helper function to check if supplied credentials and Auth Token are valid or
+     * not by querying the associated Client DB.
+     * 
+     * @param client    Client's Name
+     * @param authToken Client's Auth Token
+     * @param isAdmin   Client's Admin Status
+     * @return Hash map with two keys; valid:{@code true} if Auth Token is valid
+     *         else {@code false}, isAdmin: {@code true} if Client is admin else
+     *         {@code false}
+     */
+    private HashMap<String, Boolean> checkAuthToken(String client, String authToken) {
+        HashMap<String, Boolean> resp = new HashMap<String, Boolean>(2);
+        try (PreparedStatement query = this.clientDB
+                .prepareStatement("SELECT Admin_Status FROM client WHERE Username = ? AND Login_Status = 'ONLINE'");) {
+            ResultSet queryResp = query.executeQuery();
+
+            if (queryResp.next()) {
+                resp.put("valid", true);
+                resp.put("isAdmin", queryResp.getBoolean("Admin_Status"));
+            }
+
+            return resp;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        resp.put("valid", false);
+        resp.put("isAdmin", false);
+        return resp;
+    }
+
+    /**
      * Helper function that takes the Client's password and hashes it with SHA-256
      * for storage in the associated DB.
      * 
@@ -177,7 +209,6 @@ final public class AuthServerHandler implements Runnable {
      * @receivedInstructionIDs: REGISTER_REQUEST
      * @sentInstructionIDs: REGISTER_SUCCESS, REGISTER_REQUEST_FAIL,
      *                      REGISTER_REQUEST_INVALID
-     * @receivedHeaders: pass:Password
      */
     private void registerUser(RegisterMessage request) {
 
@@ -197,7 +228,7 @@ final public class AuthServerHandler implements Runnable {
             } catch (SQLException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, "Auth Server"));
+                        new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, null, "Auth Server"));
                 return;
             }
 
@@ -205,7 +236,7 @@ final public class AuthServerHandler implements Runnable {
             if (nameValid) {
                 // If username is available, create new user in client DB with supplied password
                 // Hashing password
-                String hashedPass = AuthServerHandler.hashPassword(request.getHeaders().get("pass"));
+                String hashedPass = AuthServerHandler.hashPassword(request.getPassword());
                 try (PreparedStatement query = this.clientDB
                         .prepareStatement("INSERT INTO client(Username, Password) VALUES (?,?)")) {
 
@@ -223,13 +254,13 @@ final public class AuthServerHandler implements Runnable {
 
                     // Sending success response to Client
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new RegisterMessage(RegisterStatus.REGISTER_SUCCESS, null, "Auth Server"));
+                            new RegisterMessage(RegisterStatus.REGISTER_SUCCESS, null, null, "Auth Server"));
                     return;
 
                 } catch (SQLException | IllegalArgumentException e) {
                     e.printStackTrace();
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, "Auth Server"));
+                            new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, null, "Auth Server"));
                     return;
                 }
             }
@@ -237,7 +268,7 @@ final public class AuthServerHandler implements Runnable {
             else {
                 // User already exists, sending failure response to Client
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new RegisterMessage(RegisterStatus.REGISTER_REQUEST_INVALID, null, "Auth Server"));
+                        new RegisterMessage(RegisterStatus.REGISTER_REQUEST_INVALID, null, null, "Auth Server"));
                 return;
             }
         }
@@ -245,7 +276,7 @@ final public class AuthServerHandler implements Runnable {
         else {
             // Invalid login request
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, "Auth Server"));
+                    new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, null, "Auth Server"));
             return;
         }
     }
@@ -260,12 +291,8 @@ final public class AuthServerHandler implements Runnable {
      *                Message Specs
      * @receivedInstructionIDs: LOGIN_REQUEST
      * @sentInstructionIDs: LOGIN_SUCCESS, LOGIN_FAIL
-     * @receivedHeaders: pass:Password
-     * @sentHeaders: authToken:authToken (null if LOGIN_FAIL)
      */
     private void logInUser(LoginMessage request) {
-
-        HashMap<String, String> headers = new HashMap<String, String>(1);
 
         // Check if valid Login Request
         if (request.getStatus() == LoginStatus.LOGIN_REQUEST) {
@@ -279,9 +306,8 @@ final public class AuthServerHandler implements Runnable {
                 return;
             } finally {
                 if (authToken == null) {
-                    headers.put("authToken", null);
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, headers, "Auth Server"));
+                            new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, null, null, "Auth Server"));
                 }
             }
 
@@ -290,15 +316,16 @@ final public class AuthServerHandler implements Runnable {
             // If it succeeds, user has been successfully logged in
             boolean validLogin = true;
             // Hashing password
-            String hashedPass = AuthServerHandler.hashPassword(request.getHeaders().get("pass"));
+            String hashedPass = AuthServerHandler.hashPassword(request.getPassword());
 
             try (PreparedStatement query = this.clientDB
                     .prepareStatement("UPDATE client_database.client SET Login_Status = 'ONLINE', Auth_Code = ? "
-                            + "WHERE (Username = ? AND Password = ?)")) {
+                            + "WHERE (Username = ? AND Password = ? AND Login_Status = 'OFFLINE' AND Admin_Status = ?)")) {
 
                 query.setString(1, authToken);
                 query.setString(2, request.getSender());
                 query.setString(3, hashedPass);
+                query.setBoolean(4, request.getIfAdmin());
 
                 if (query.executeUpdate() != 1) {
                     validLogin = false;
@@ -307,29 +334,26 @@ final public class AuthServerHandler implements Runnable {
 
                 else
                     this.clientDB.commit();
+
             } catch (SQLException e) {
                 e.printStackTrace();
-                headers.put("authToken", null);
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, "Auth Server"));
+                        new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, null, null, "Auth Server"));
                 return;
             }
 
             if (validLogin) {
-                headers.put("authToken", authToken);
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LoginMessage(LoginStatus.LOGIN_SUCCESS, headers, "Auth Server"));
+                MessageHelpers.sendMessageTo(this.clientSocket, new LoginMessage(LoginStatus.LOGIN_SUCCESS, null,
+                        request.getIfAdmin(), authToken, null, "Auth Server"));
             } else {
-                headers.put("authToken", null);
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LoginMessage(LoginStatus.LOGIN_REQUEST_INVALID, headers, "Auth Server"));
+                        new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, null, null, "Auth Server"));
             }
 
         } else {
             // Invalid login request
-            headers.put("authToken", null);
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, headers, "Auth Server"));
+                    new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, "Auth Server", null, null));
             return;
         }
     }
@@ -343,7 +367,6 @@ final public class AuthServerHandler implements Runnable {
      *                Message Specs
      * @receivedInstructionIDs: LOGOUT_REQUEST
      * @sentInstructionIDs: LOGOUT_SUCCESS, LOGOUT_FAIL
-     * @receivedHeaders: authToken:AuthToken
      */
 
     private void logoutUser(LogoutMessage request) {
@@ -352,11 +375,10 @@ final public class AuthServerHandler implements Runnable {
         if (request.getStatus() == LogoutStatus.LOGOUT_REQUEST) {
             boolean loggedOut = false;
             try (PreparedStatement query = this.clientDB.prepareStatement(
-                    "UPDATE client SET Login_Status = 'OFFLINE', Auth_Code = ? WHERE(Username = ? AND Auth_Code = ?)");) {
+                    "UPDATE client SET Login_Status = 'OFFLINE', Auth_Code = ? WHERE Auth_Code = ?)");) {
 
                 query.setNull(1, Types.NULL);
-                query.setString(2, request.getSender());
-                query.setString(3, request.getHeaders().get("authToken"));
+                query.setString(2, request.getAuthToken());
 
                 if (query.executeUpdate() != 1)
                     this.clientDB.rollback();
@@ -368,22 +390,22 @@ final public class AuthServerHandler implements Runnable {
             } catch (SQLException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, "Auth Server"));
+                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, null, "Auth Server"));
                 return;
             }
 
             if (loggedOut)
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LogoutMessage(LogoutStatus.LOGOUT_SUCCESS, null, "Auth Server"));
+                        new LogoutMessage(LogoutStatus.LOGOUT_SUCCESS, null, null, "Auth Server"));
             else
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_INVALID, null, "Auth Server"));
+                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_INVALID, null, null, "Auth Server"));
         }
 
         else {
             // Invalid logout request, Sending failure response to the client
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, "Auth Server"));
+                    new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, null, "Auth Server"));
             return;
         }
     }
@@ -394,7 +416,6 @@ final public class AuthServerHandler implements Runnable {
      * 
      */
     private InetSocketAddress locateReplicaServer() {
-        // For now direct it to a single File Server
         return this.replicaAddrs.get(ThreadLocalRandom.current().nextInt(this.replicaAddrs.size()));
     }
 
@@ -410,11 +431,18 @@ final public class AuthServerHandler implements Runnable {
      * @expectedInstructionIDs: DOWNLOAD_REQUEST
      * @sentInstructionIDs: DOWNLOAD_REQUEST_VALID, DOWNLOAD_REQUEST_INVALID,
      *                      DOWNLOAD_REQUEST_FAIL
-     * @expectedHeaders: code:Code
      * @sentHeaders: addr:AddressOfReplicaServer, port:PortOfReplicaServer
      */
     private void downloadRequest(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
+            // Check Auth Token
+            // If not valid
+            if (!this.checkAuthToken(request.getSender(), request.getAuthToken()).get("valid")) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
+                return;
+            }
+
             // Establishing connection to Primary File Server
             try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
                     this.primaryServerAddress.getPort());) {
@@ -534,6 +562,14 @@ final public class AuthServerHandler implements Runnable {
      */
     private void uploadRequest(UploadMessage request) {
         if (request.getStatus() == UploadStatus.UPLOAD_REQUEST) {
+            // Check Auth Token
+            // If not valid
+            if (!this.checkAuthToken(request.getSender(), request.getAuthToken()).get("valid")) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                return;
+            }
+
             // Establishing connection to Primary File Server
             try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
                     this.primaryServerAddress.getPort());) {
@@ -697,12 +733,23 @@ final public class AuthServerHandler implements Runnable {
      */
     private void deleteFileRequest(DeleteMessage request) {
         if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
+            // Check Auth Token
+            // If not valid
+            HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
+            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
+                return;
+            }
+
             // TODO: Check Auth Token
             // Establishing connection to Primary File Server
             try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
                     this.primaryServerAddress.getPort());) {
                 // Forward delete request to the Primary File Server
-                if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
+                if (!MessageHelpers.sendMessageTo(primaryFileSocket,
+                        new DeleteMessage(request.getStatus(), request.getCode(), request.getHeaders(),
+                                request.getSender(), request.getAuthToken(), authResp.get("isAdmin")))) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
                             new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
                     return;
@@ -732,7 +779,9 @@ final public class AuthServerHandler implements Runnable {
                         new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
                 return;
             }
-        } else {
+        } else
+
+        {
             MessageHelpers.sendMessageTo(this.clientSocket,
                     new DeleteMessage(DeleteStatus.DELETE_INVALID, null, null, "Auth Server", null, false));
             return;
@@ -757,6 +806,15 @@ final public class AuthServerHandler implements Runnable {
     private void getAllFileDataRequest(FileDetailsMessage request) {
 
         if (request.getStatus() == FileDetailsStatus.FILEDETAILS_REQUEST) {
+            // Check Auth Token
+            // If not valid
+            HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
+            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                return;
+            }
+
             // Establishing connection to Primary File Server
             try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
                     this.primaryServerAddress.getPort());) {

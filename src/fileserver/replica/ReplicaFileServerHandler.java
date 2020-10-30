@@ -26,16 +26,16 @@ final public class ReplicaFileServerHandler implements Runnable {
     private final Socket clientSocket;
     private final Connection fileDB;
     private final InetSocketAddress primaryServerAddr;
-    private final Socket authService;
+    private final InetSocketAddress authServiceListener;
 
     private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_replicadb");
 
     ReplicaFileServerHandler(Socket clientSocket, Connection fileDB, InetSocketAddress primaryServerAddr,
-            Socket authService) {
+            InetSocketAddress authServiceListener) {
         this.clientSocket = clientSocket;
         this.fileDB = fileDB;
         this.primaryServerAddr = primaryServerAddr;
-        this.authService = authService;
+        this.authServiceListener = authServiceListener;
     }
 
     @Override
