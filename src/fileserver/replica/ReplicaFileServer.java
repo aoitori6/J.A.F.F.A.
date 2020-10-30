@@ -1,6 +1,9 @@
 package fileserver.replica;
 
 import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -15,22 +18,27 @@ import statuscodes.AuthStatus;
 public class ReplicaFileServer {
     private final static byte NTHREADS = 100;
     private final ExecutorService threadPool;
+
     private final ServerSocket fileServer;
-    private final ServerSocket authServiceListener;
-    private static Socket authService;
+    private final InetSocketAddress authServiceListener = new InetSocketAddress("localhost", 10000);
+
     private final InetSocketAddress primaryServerAddr = new InetSocketAddress("localhost", 12600);
 
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
     private final Connection fileDB;
 
-    protected static synchronized boolean checkAuthToken(String clientName, String authToken) {
-        AuthMessage response;
-        try {
-            if (!MessageHelpers.sendMessageTo(ReplicaFileServer.authService,
-                    new AuthMessage(AuthStatus.AUTH_CHECK, null, "File Server", clientName, authToken, false)))
-                return false;
+    protected static boolean checkAuthToken(InetSocketAddress authServiceListener, String clientName, boolean isAdmin,
+            String authToken) {
 
-            response = (AuthMessage) MessageHelpers.receiveMessageFrom(ReplicaFileServer.authService);
+        try (Socket toService = new Socket(authServiceListener.getAddress(), authServiceListener.getPort());
+                ObjectOutputStream toSocket = new ObjectOutputStream(toService.getOutputStream());
+                ObjectInputStream fromSocket = new ObjectInputStream(toService.getInputStream());) {
+
+            toSocket.writeObject(
+                    new AuthMessage(AuthStatus.AUTH_CHECK, null, "Replica Server", clientName, authToken, isAdmin));
+            toSocket.flush();
+
+            AuthMessage response = (AuthMessage) fromSocket.readObject();
             if (response.getStatus() == AuthStatus.AUTH_VALID)
                 return true;
             else
@@ -39,8 +47,6 @@ public class ReplicaFileServer {
         } catch (Exception e) {
             e.printStackTrace();
             return false;
-        } finally {
-            response = null;
         }
     }
 
@@ -64,9 +70,6 @@ public class ReplicaFileServer {
         this.fileDB = DriverManager.getConnection(url, "root", "85246");
         this.fileDB.setAutoCommit(false);
 
-        // Initialize connection point to Auth Server
-        this.authServiceListener = new ServerSocket(9696);
-        ReplicaFileServer.authService = this.authServiceListener.accept();
     }
 
     public void start() throws IOException, SQLException {
@@ -77,7 +80,7 @@ public class ReplicaFileServer {
         while (!threadPool.isShutdown()) {
             try {
                 threadPool.execute(new ReplicaFileServerHandler(this.fileServer.accept(), this.fileDB,
-                        this.primaryServerAddr, ReplicaFileServer.authService));
+                        this.primaryServerAddr, this.authServiceListener));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -87,8 +90,6 @@ public class ReplicaFileServer {
         this.fileServer.close();
         this.fileDB.close();
         this.threadPool.shutdown();
-        ReplicaFileServer.authService.close();
-        this.authServiceListener.close();
     }
 
     /**
