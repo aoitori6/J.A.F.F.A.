@@ -151,7 +151,7 @@ final public class InterfaceClient {
             System.out.println("Enter the no.of minutes: ");
             int minutes = conInput.nextInt();
 
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
             LocalDateTime ldt = LocalDateTime.now(ZoneId.of("UTC"));
             long totalMinutes = days * 24 * 60 + hours * 60 + minutes;
 

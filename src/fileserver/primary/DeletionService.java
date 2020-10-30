@@ -19,14 +19,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.stream.Stream;
 
 class DeletionService implements Runnable {
-    private final ExecutorService exceutionPool;
+    private final ExecutorService executionPool;
     private final Connection fileDB;
     private InetSocketAddress authServerAddr;
 
     private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
 
     DeletionService(ExecutorService executionPool, InetSocketAddress authServerAddr, Connection fileDB) {
-        this.exceutionPool = executionPool;
+        this.executionPool = executionPool;
         this.authServerAddr = authServerAddr;
         this.fileDB = fileDB;
     }
@@ -41,7 +41,8 @@ class DeletionService implements Runnable {
         // Querying DB for deletable files
         PreparedStatement query = null;
         try {
-            query = this.fileDB.prepareStatement("SELECT Code FROM file WHERE Deletion_Timestamp <= ?");
+            query = this.fileDB
+                    .prepareStatement("SELECT Code FROM file WHERE (Deletion_Timestamp <= ? OR Deletable = TRUE)");
             String currTime = LocalDateTime.now(ZoneId.of("UTC"))
                     .format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"));
             query.setString(1, currTime);
@@ -51,10 +52,6 @@ class DeletionService implements Runnable {
             while (queryResp.next())
                 fileCodes.add(FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")));
             query.close();
-            query = this.fileDB.prepareStatement("DELETE FROM file WHERE Deletion_Timestamp <= ?");
-            query.setString(1, currTime);
-            query.executeUpdate();
-
             this.fileDB.commit();
 
         } catch (Exception e) {
@@ -76,14 +73,7 @@ class DeletionService implements Runnable {
         // Recursively deleting all the Files in the folder and sending Deletion
         // Requests to Auth for synchronization
         for (Path toBeDeleted : fileCodes) {
-            try (Stream<Path> elements = Files.walk(toBeDeleted)) {
-                elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
-                continue;
-            }
-            this.exceutionPool.submit(new DeletionToAuth(this.authServerAddr, toBeDeleted.getFileName().toString()));
+            this.executionPool.submit(new DeletionToAuth(this.authServerAddr, toBeDeleted.getFileName().toString()));
         }
 
     }

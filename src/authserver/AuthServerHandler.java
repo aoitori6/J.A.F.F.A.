@@ -17,6 +17,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -36,15 +37,15 @@ import statuscodes.UploadStatus;
 final public class AuthServerHandler implements Runnable {
     private final Socket clientSocket;
     private final Connection clientDB;
-    private final Socket primaryFileServerSocket;
+    private final InetSocketAddress primaryServerAddress;
 
     private ArrayList<InetSocketAddress> replicaAddrs = new ArrayList<InetSocketAddress>(1);
 
-    AuthServerHandler(Socket clientSocket, Connection clientDB, Socket primaryFileServerSocket,
+    AuthServerHandler(Socket clientSocket, Connection clientDB, InetSocketAddress primaryServerAddress,
             ArrayList<InetSocketAddress> replicaAddrs) {
         this.clientSocket = clientSocket;
         this.clientDB = clientDB;
-        this.primaryFileServerSocket = primaryFileServerSocket;
+        this.primaryServerAddress = primaryServerAddress;
 
         this.replicaAddrs = replicaAddrs;
     }
@@ -188,7 +189,7 @@ final public class AuthServerHandler implements Runnable {
 
                 query.setString(1, request.getSender());
                 // If true, then username is already taken
-                if (!query.executeQuery().next())
+                if (query.executeQuery().next())
                     nameValid = false;
                 this.clientDB.commit();
 
@@ -415,35 +416,45 @@ final public class AuthServerHandler implements Runnable {
      */
     private void downloadRequest(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
+            // Establishing connection to Primary File Server
+            try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
+                    this.primaryServerAddress.getPort());) {
 
-            // Send a download request to the Primary File Server
-            if (!MessageHelpers.sendMessageTo(this.primaryFileServerSocket, request)) {
+                // Send a download request to the Primary File Server
+                if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
+                    return;
+                }
+
+                // Getting the response from the Primary File Server
+                Message response = MessageHelpers.receiveMessageFrom(primaryFileSocket);
+                DownloadMessage castResponse = (DownloadMessage) response;
+                response = null;
+
+                if (castResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID) {
+                    // If Primary File Server returned failure
+                    MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                            DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, "Auth Server", null));
+                    return;
+                } else {
+                    // If Primary File Server returned Success
+                    HashMap<String, String> headers = new HashMap<String, String>();
+                    InetSocketAddress replicaAddr = AuthServerHandler.locateReplicaServer(this.replicaAddrs);
+                    headers.put("addr", replicaAddr.getHostString());
+                    headers.put("port", Integer.toString(replicaAddr.getPort()));
+
+                    MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                            DownloadStatus.DOWNLOAD_REQUEST_VALID, null, headers, "Auth Server", null));
+                    return;
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
                 return;
             }
 
-            // Getting the response from the Primary File Server
-            Message response = MessageHelpers.receiveMessageFrom(this.primaryFileServerSocket);
-            DownloadMessage castResponse = (DownloadMessage) response;
-            response = null;
-
-            if (castResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID) {
-                // If Primary File Server returned failure
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, "Auth Server", null));
-                return;
-            } else {
-                // If Primary File Server returned Success
-                HashMap<String, String> headers = new HashMap<String, String>();
-                InetSocketAddress replicaAddr = AuthServerHandler.locateReplicaServer(this.replicaAddrs);
-                headers.put("addr", replicaAddr.getHostString());
-                headers.put("port", Integer.toString(replicaAddr.getPort()));
-
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_VALID, null, headers, "Auth Server", null));
-                return;
-            }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
                     new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
@@ -471,17 +482,23 @@ final public class AuthServerHandler implements Runnable {
      * @sentHeaders: code:Code
      */
     private static synchronized void replicaSyncUpload(ArrayList<InetSocketAddress> replicaAddrs, String code) {
-        for (InetSocketAddress replicaAddr : replicaAddrs) {
-            try (Socket replicaSocket = new Socket(replicaAddr.getAddress(), replicaAddr.getPort());) {
+        System.out.println(replicaAddrs.size());
 
+        for (Iterator<InetSocketAddress> itr = replicaAddrs.iterator(); itr.hasNext();) {
+            InetSocketAddress replicaAddr = itr.next();
+            System.err.println("Creating Socket to " + replicaAddr);
+            try (Socket replicaSocket = new Socket(replicaAddr.getAddress(), replicaAddr.getPort());) {
+                System.err.println("Created Socket to " + replicaAddr);
                 // Auth Server will wait around 10 minutes for a response
                 replicaSocket.setSoTimeout((int) TimeUnit.MINUTES.toMillis(10));
 
+                System.err.println("Sending Message to " + replicaAddr);
                 // If message sending failed
                 if (!MessageHelpers.sendMessageTo(replicaSocket, new SyncUploadMessage(
                         SyncUploadStatus.SYNCUPLOAD_REQUEST, null, "Auth Server", "tempAuthToken", code, null)))
                     throw new Exception();
 
+                System.err.println("Receiving Message from " + replicaAddr);
                 // Parsing response
                 Message response = (Message) MessageHelpers.receiveMessageFrom(replicaSocket);
                 SyncUploadMessage castResponse = (SyncUploadMessage) response;
@@ -495,9 +512,7 @@ final public class AuthServerHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 System.err.println("ERROR: Communication Error with Replica Server " + replicaAddr.toString());
-                synchronized (replicaAddrs) {
-                    replicaAddrs.remove(replicaAddr);
-                }
+                replicaAddrs.remove(replicaAddr);
                 continue;
             }
         }
@@ -520,69 +535,93 @@ final public class AuthServerHandler implements Runnable {
      */
     private void uploadRequest(UploadMessage request) {
         if (request.getStatus() == UploadStatus.UPLOAD_REQUEST) {
-            // Send a upload request to the Primary File Server
-            if (!MessageHelpers.sendMessageTo(this.primaryFileServerSocket, request)) {
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
-                return;
-            }
-
-            // Getting the response from the Primary File Server
-            Message response = MessageHelpers.receiveMessageFrom(this.primaryFileServerSocket);
-            UploadMessage castResponse = (UploadMessage) response;
-            response = null;
-
-            if (castResponse.getStatus() != UploadStatus.UPLOAD_START) {
-                // If Primary File Server returned failure
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
-                return;
-            } else {
-                // If Primary File Server returned success
-                // Sending UploadStart message to the client
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_START, null, "Auth Server", null, null));
-
-                int buffSize = 1_048_576;
-                byte[] writeBuffer = new byte[buffSize];
-                BufferedInputStream fileFromClient = null;
-                BufferedOutputStream fileToServer = null;
-                try {
-                    fileFromClient = new BufferedInputStream(this.clientSocket.getInputStream());
-                    fileToServer = new BufferedOutputStream(primaryFileServerSocket.getOutputStream());
-
-                    // Temporary var to keep track of total bytes read
-                    long _temp_t = 0;
-                    // Temporary var to keep track of read Bytes
-                    int _temp_c;
-                    while ((_temp_c = fileFromClient.read(writeBuffer, 0, writeBuffer.length)) != -1
-                            || (_temp_t <= request.getFileInfo().getSize())) {
-                        fileToServer.write(writeBuffer, 0, _temp_c);
-                        fileToServer.flush();
-                        _temp_t += _temp_c;
-                    }
-
-                } catch (IOException e) {
-                    e.printStackTrace();
+            // Establishing connection to Primary File Server
+            try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
+                    this.primaryServerAddress.getPort());) {
+                // Send a upload request to the Primary File Server
+                if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
                     return;
-                } finally {
-                    writeBuffer = null;
-                    try {
-                        fileFromClient = null;
-                        fileToServer = null;
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
                 }
 
-                // Notify each Replica Server to pull the newly uploaded File. If any Replica
-                // Server errors in this, remove it from the list
-                replicaSyncUpload(replicaAddrs, castResponse.getFileInfo().getCode());
+                // Getting the response from the Primary File Server
+                Message response = MessageHelpers.receiveMessageFrom(primaryFileSocket);
+                UploadMessage castResponse = (UploadMessage) response;
+                response = null;
+                FileInfo fileInfo = castResponse.getFileInfo();
 
-                // Notify Client
-                MessageHelpers.sendMessageTo(this.clientSocket, new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null,
-                        "Auth Server", "tempAuthToken", castResponse.getFileInfo()));
+                if (castResponse.getStatus() != UploadStatus.UPLOAD_START) {
+                    // If Primary File Server returned failure
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                    return;
+                } else {
+                    // If Primary File Server returned success
+                    // Sending UploadStart message to the client
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new UploadMessage(UploadStatus.UPLOAD_START, null, "Auth Server", null, null));
 
+                    int buffSize = 1_048_576;
+                    byte[] writeBuffer = new byte[buffSize];
+                    BufferedInputStream fileFromClient = null;
+                    BufferedOutputStream fileToServer = null;
+                    try {
+                        fileFromClient = new BufferedInputStream(this.clientSocket.getInputStream());
+                        fileToServer = new BufferedOutputStream(primaryFileSocket.getOutputStream());
+
+                        // Temporary var to keep track of total bytes read
+                        long _temp_t = 0;
+                        // Temporary var to keep track of read Bytes
+                        int _temp_c = 0;
+                        while ((_temp_t < fileInfo.getSize()) && ((_temp_c = fileFromClient.read(writeBuffer, 0,
+                                Math.min(writeBuffer.length, (int) fileInfo.getSize()))) != -1)) {
+                            fileToServer.write(writeBuffer, 0, _temp_c);
+                            fileToServer.flush();
+                            _temp_t += _temp_c;
+                        }
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        return;
+                    } finally {
+                        writeBuffer = null;
+                        try {
+                            fileFromClient = null;
+                            fileToServer = null;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    System.err.println("Finished Uploading");
+
+                    // Getting the response from the Primary File Server
+                    response = MessageHelpers.receiveMessageFrom(primaryFileSocket);
+                    castResponse = (UploadMessage) response;
+                    response = null;
+                    System.err.println("Got Succ Message");
+
+                    if (castResponse.getStatus() != UploadStatus.UPLOAD_SUCCESS)
+                        MessageHelpers.sendMessageTo(this.clientSocket, new UploadMessage(UploadStatus.UPLOAD_FAIL,
+                                null, "Auth Server", "tempAuthToken", null));
+
+                    System.err.println("Notifying Replicas");
+                    // Notify each Replica Server to pull the newly uploaded File. If any Replica
+                    // Server errors in this, remove it from the list
+                    replicaSyncUpload(replicaAddrs, castResponse.getFileInfo().getCode());
+                    System.err.println("Notified Replicas");
+
+                    // Notify Client
+                    MessageHelpers.sendMessageTo(this.clientSocket, new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null,
+                            "Auth Server", "tempAuthToken", castResponse.getFileInfo()));
+                    System.err.println("Finished Notifying Client");
+
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                return;
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
@@ -611,7 +650,8 @@ final public class AuthServerHandler implements Runnable {
      * @sentHeaders: code:Code
      */
     private static synchronized void replicaSyncDelete(ArrayList<InetSocketAddress> replicaAddrs, String code) {
-        for (InetSocketAddress replicaAddr : replicaAddrs) {
+        for (Iterator<InetSocketAddress> itr = replicaAddrs.iterator(); itr.hasNext();) {
+            InetSocketAddress replicaAddr = itr.next();
             try (Socket replicaSocket = new Socket(replicaAddr.getAddress(), replicaAddr.getPort());) {
 
                 // Auth Server will wait around 10 minutes for a response
@@ -658,30 +698,39 @@ final public class AuthServerHandler implements Runnable {
     private void deleteFileRequest(DeleteMessage request) {
         if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
             // TODO: Check Auth Token
-            // Forward delete request to the Primary File Server
-            if (!MessageHelpers.sendMessageTo(this.primaryFileServerSocket, request)) {
+            // Establishing connection to Primary File Server
+            try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
+                    this.primaryServerAddress.getPort());) {
+                // Forward delete request to the Primary File Server
+                if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
+                    return;
+                }
+
+                // Getting the response from the Primary File Server
+                Message response = MessageHelpers.receiveMessageFrom(primaryFileSocket);
+                DeleteMessage castResponse = (DeleteMessage) response;
+                response = null;
+
+                if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS) {
+                    // If Primary File Server returned failure
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
+                    return;
+                } else {
+                    // If Primary File Server returned success
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null, "Auth Server", null, false));
+
+                    // Syncing to Replicas
+                    AuthServerHandler.replicaSyncDelete(this.replicaAddrs, request.getCode());
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
                         new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
                 return;
-            }
-
-            // Getting the response from the Primary File Server
-            Message response = MessageHelpers.receiveMessageFrom(this.primaryFileServerSocket);
-            DeleteMessage castResponse = (DeleteMessage) response;
-            response = null;
-
-            if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS) {
-                // If Primary File Server returned failure
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
-                return;
-            } else {
-                // If Primary File Server returned success
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null, "Auth Server", null, false));
-
-                // Syncing to Replicas
-                AuthServerHandler.replicaSyncDelete(this.replicaAddrs, request.getCode());
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
@@ -708,46 +757,56 @@ final public class AuthServerHandler implements Runnable {
     private void getAllFileDataRequest(FileDetailsMessage request) {
 
         if (request.getStatus() == FileDetailsStatus.FILEDETAILS_REQUEST) {
-            // Send a getAllFileDetails request to the Primary File Server
-            if (!MessageHelpers.sendMessageTo(this.primaryFileServerSocket, request)) {
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
-                return;
-            }
+            // Establishing connection to Primary File Server
+            try (Socket primaryFileSocket = new Socket(this.primaryServerAddress.getAddress(),
+                    this.primaryServerAddress.getPort());) {
 
-            // Receiving response from the Primary File Server
-            Message response = MessageHelpers.receiveMessageFrom(this.primaryFileServerSocket);
-            FileDetailsMessage castResponse = (FileDetailsMessage) response;
-            response = null;
+                // Send a getAllFileDetails request to the Primary File Server
+                if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                    return;
+                }
 
-            if (castResponse.getStatus() != FileDetailsStatus.FILEDETAILS_START) {
-                // If Primary File Server returned failure
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
-                return;
-            }
+                // Receiving response from the Primary File Server
+                Message response = MessageHelpers.receiveMessageFrom(primaryFileSocket);
+                FileDetailsMessage castResponse = (FileDetailsMessage) response;
+                response = null;
 
-            // If Primary File Server returned success
-            // Sending a FileDetails Start message to the client
-            MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
-                    castResponse.getHeaders(), "Auth Server", null));
+                if (castResponse.getStatus() != FileDetailsStatus.FILEDETAILS_START) {
+                    // If Primary File Server returned failure
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                    return;
+                }
 
-            int count = Integer.parseInt(castResponse.getHeaders().get("count"));
-            ObjectOutputStream toClient = null;
-            ObjectInputStream fromPrimaryServer = null;
-            try {
-                toClient = new ObjectOutputStream(this.clientSocket.getOutputStream());
-                fromPrimaryServer = new ObjectInputStream(this.primaryFileServerSocket.getInputStream());
+                // If Primary File Server returned success
+                // Sending a FileDetails Start message to the client
+                MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
+                        FileDetailsStatus.FILEDETAILS_START, castResponse.getHeaders(), "Auth Server", null));
 
-                for (int i = 0; i < count; ++i)
-                    toClient.writeObject((FileInfo) fromPrimaryServer.readObject());
+                int count = Integer.parseInt(castResponse.getHeaders().get("count"));
+                ObjectOutputStream toClient = null;
+                ObjectInputStream fromPrimaryServer = null;
+                try {
+                    toClient = new ObjectOutputStream(this.clientSocket.getOutputStream());
+                    fromPrimaryServer = new ObjectInputStream(primaryFileSocket.getInputStream());
 
-            } catch (Exception e) {
+                    for (int i = 0; i < count; ++i)
+                        toClient.writeObject((FileInfo) fromPrimaryServer.readObject());
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
+                } finally {
+                    toClient = null;
+                    fromPrimaryServer = null;
+                }
+            } catch (IOException e) {
                 e.printStackTrace();
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
                 return;
-            } finally {
-                toClient = null;
-                fromPrimaryServer = null;
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,

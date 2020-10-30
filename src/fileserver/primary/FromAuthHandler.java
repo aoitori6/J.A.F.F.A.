@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.stream.Stream;
 
 import misc.FileInfo;
 import message.*;
@@ -45,31 +46,29 @@ final class FromAuthHandler implements Runnable {
      * required by looking at the status field.
      */
     public void run() {
-        while (!this.authServer.isClosed()) {
-            // Expect a Message from the Client
-            Message request = MessageHelpers.receiveMessageFrom(this.authServer);
+        // Expect a Message from the Client
+        Message request = MessageHelpers.receiveMessageFrom(this.authServer);
 
-            // Central Logic
-            // Execute different methods after checking Message status
+        // Central Logic
+        // Execute different methods after checking Message status
 
-            switch (request.getRequestKind()) {
-                case Download:
-                    serverDownload((DownloadMessage) request);
-                    break;
-                case Upload:
-                    serverUpload((UploadMessage) request);
-                    break;
-                case Delete:
-                    deleteFile((DeleteMessage) request);
-                    break;
-                case FileDetails:
-                    getAllFileData((FileDetailsMessage) request);
-                    break;
-                default:
-                    break;
-            }
-
+        switch (request.getRequestKind()) {
+            case Download:
+                serverDownload((DownloadMessage) request);
+                break;
+            case Upload:
+                serverUpload((UploadMessage) request);
+                break;
+            case Delete:
+                deleteFile((DeleteMessage) request);
+                break;
+            case FileDetails:
+                getAllFileData((FileDetailsMessage) request);
+                break;
+            default:
+                break;
         }
+
         try {
             this.authServer.close();
         } catch (IOException e) {
@@ -100,7 +99,7 @@ final class FromAuthHandler implements Runnable {
             boolean toDelete = false;
             try {
                 query = fileDB.prepareStatement(
-                        "SELECT Current_Threads, Deletion_Timestamp, Downloads_Remaining FROM file WHERE Code = ?");
+                        "SELECT Code, Current_Threads, Deletion_Timestamp, Downloads_Remaining FROM file WHERE Code = ?");
 
                 // Querying DB for File details
                 query.setString(1, request.getCode());
@@ -122,17 +121,20 @@ final class FromAuthHandler implements Runnable {
 
                 // Check if timestamp has been exceeded
                 if (timestamp != null) {
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
                     LocalDateTime deletionTimestamp = LocalDateTime.parse(timestamp, formatter);
-                    if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp))
+                    if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp)) {
                         toDelete = true;
+                        canDownload = false;
+                    }
                 }
 
                 // Check if download cap has been exceeded
                 if (downloadsRemaning != null && !toDelete) {
-                    if (Integer.parseInt(downloadsRemaning) == 0)
+                    if (Integer.parseInt(downloadsRemaning) == 0) {
                         toDelete = true;
-                    else if (currentThreads + 1 > Integer.parseInt(downloadsRemaning))
+                        canDownload = false;
+                    } else if (currentThreads + 1 > Integer.parseInt(downloadsRemaning))
                         canDownload = false;
                 }
 
@@ -256,13 +258,16 @@ final class FromAuthHandler implements Runnable {
                 // Temporary var to keep track of total bytes read
                 long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
-                int _temp_c;
-                while (((_temp_c = fileFromAuth.read(readBuffer, 0, readBuffer.length)) != -1)
-                        || (_temp_t <= uploadInfo.getSize())) {
+                int _temp_c = 0;
+                System.err.println("Before Write: " + uploadInfo.getSize());
+                while ((_temp_t < uploadInfo.getSize()) && ((_temp_c = fileFromAuth.read(readBuffer, 0,
+                        Math.min(readBuffer.length, (int) uploadInfo.getSize()))) != -1)) {
                     fileToDB.write(readBuffer, 0, _temp_c);
                     fileToDB.flush();
                     _temp_t += _temp_c;
+                    System.out.println("Read :" + _temp_t);
                 }
+                System.err.println("After Write");
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -274,7 +279,9 @@ final class FromAuthHandler implements Runnable {
                 fileFromAuth = null;
             }
 
+            // File successfully transferred
             // If file was successfully uploaded, add an entry to the File DB
+            System.err.println("Inserting into DB");
             try (PreparedStatement query = this.fileDB.prepareStatement(
                     "INSERT INTO file (Code, Uploader, Filename, Downloads_Remaining, Deletion_Timestamp) VALUES(?,?,?,?,?)");) {
 
@@ -288,15 +295,21 @@ final class FromAuthHandler implements Runnable {
                     query.setNull(4, java.sql.Types.SMALLINT);
 
                 query.setString(5, uploadInfo.getDeletionTimestamp());
-                query.executeUpdate();
+                System.err.println(query.executeUpdate());
 
                 this.fileDB.commit();
+                System.err.println("Inserted into DB");
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.authServer,
                         new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
                 return;
             }
+
+            // Notify Auth of Success
+            MessageHelpers.sendMessageTo(this.authServer,
+                    new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null, "File Server", "tempServerKey", uploadInfo));
+            System.err.println("Finished Uploading");
         }
 
         else {
@@ -371,10 +384,11 @@ final class FromAuthHandler implements Runnable {
 
             // If it was, delete it from the File System too
             Path toBeDeleted = FromAuthHandler.FILESTORAGEFOLDER_PATH.resolve(request.getCode());
-            try {
-                Files.walk(toBeDeleted).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            try (Stream<Path> elements = Files.walk(toBeDeleted)) {
+                elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException e) {
                 e.printStackTrace();
+                System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
             }
 
             MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null,
