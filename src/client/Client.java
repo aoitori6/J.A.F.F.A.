@@ -123,7 +123,7 @@ public class Client {
         headers.put("authToken", this.authToken);
 
         // Sending Logout Message to AuthServer
-        if (!MessageHelpers.sendMessageTo(authSocket, new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, null, name)))
+        if (!MessageHelpers.sendMessageTo(authSocket, new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, headers, name)))
             return false;
 
         // Reading AuthServer's response

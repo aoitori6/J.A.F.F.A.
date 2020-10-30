@@ -51,10 +51,6 @@ class DeletionService implements Runnable {
             while (queryResp.next())
                 fileCodes.add(FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")));
             query.close();
-            query = this.fileDB.prepareStatement("DELETE FROM file WHERE Deletion_Timestamp <= ?");
-            query.setString(1, currTime);
-            query.executeUpdate();
-
             this.fileDB.commit();
 
         } catch (Exception e) {
@@ -76,13 +72,6 @@ class DeletionService implements Runnable {
         // Recursively deleting all the Files in the folder and sending Deletion
         // Requests to Auth for synchronization
         for (Path toBeDeleted : fileCodes) {
-            try (Stream<Path> elements = Files.walk(toBeDeleted)) {
-                elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
-                continue;
-            }
             this.executionPool.submit(new DeletionToAuth(this.authServerAddr, toBeDeleted.getFileName().toString()));
         }
 

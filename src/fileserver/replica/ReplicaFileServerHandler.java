@@ -324,7 +324,7 @@ final public class ReplicaFileServerHandler implements Runnable {
                 System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
             }
 
-            try (PreparedStatement query = this.fileDB.prepareStatement("DELETE FROM file WHERE Code = ?")) {
+            try (PreparedStatement query = this.fileDB.prepareStatement("DELETE FROM replica_file WHERE Code = ?")) {
                 query.setString(1, request.getFileCode());
                 query.executeUpdate();
                 this.fileDB.commit();
