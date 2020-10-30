@@ -427,17 +427,20 @@ final class FromAuthHandler implements Runnable {
 
             // Querying associated File DB
             try (Statement query = fileDB.createStatement();) {
-                ResultSet queryResp = query.executeQuery("SELECT * FROM files WHERE deletable = FALSE");
+                ResultSet queryResp = query.executeQuery("SELECT * FROM file WHERE deletable = FALSE");
                 // Parsing Result
                 while (queryResp.next()) {
+                    Integer downloadsRemaining = null;
+                    if (queryResp.getString("downloads_remaining") != null) {
+                        downloadsRemaining = Integer.parseInt(queryResp.getString("downloads_remaining"));
+                    }
                     currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
                             FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile().length(),
-                            queryResp.getString("uploader"),
-                            Integer.parseInt(queryResp.getString("downloads_remaining")),
+                            queryResp.getString("uploader"), downloadsRemaining,
                             queryResp.getString("deletion_timestamp")));
                 }
                 this.fileDB.commit();
-            } catch (SQLException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
                 return;
             }

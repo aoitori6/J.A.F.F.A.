@@ -29,12 +29,12 @@ public class Admin extends Client {
 
         // Send a FileDetailsRequest to the Auth Server
         // Expect FILEDETAILS_START if file exists and all is successful
-        if (!MessageHelpers.sendMessageTo(fileSocket,
-                new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_REQUEST, null, name, this.authToken)))
+        if (!MessageHelpers.sendMessageTo(this.authSocket,
+                new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_REQUEST, null, this.name, this.authToken)))
             return null;
 
         // Parse Response
-        Message response = MessageHelpers.receiveMessageFrom(fileSocket);
+        Message response = MessageHelpers.receiveMessageFrom(this.authSocket);
         FileDetailsMessage castResponse = (FileDetailsMessage) response;
         response = null;
 
@@ -46,7 +46,7 @@ public class Admin extends Client {
         ObjectInputStream fromServer = null;
         try {
             currFileDetails = new ArrayList<FileInfo>(Integer.parseInt(castResponse.getHeaders().get("count")));
-            fromServer = new ObjectInputStream(fileSocket.getInputStream());
+            fromServer = new ObjectInputStream(this.authSocket.getInputStream());
 
             for (int i = 0; i < currFileDetails.size(); ++i)
                 currFileDetails.add((FileInfo) fromServer.readObject());
@@ -55,13 +55,6 @@ public class Admin extends Client {
         } catch (Exception e) {
             e.printStackTrace();
             return null;
-        } finally {
-            try {
-                fromServer.close();
-                fileSocket.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
         }
     }
 }

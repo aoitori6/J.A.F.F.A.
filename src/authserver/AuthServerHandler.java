@@ -296,7 +296,7 @@ final public class AuthServerHandler implements Runnable {
 
         // Check if valid Login Request
         if (request.getStatus() == LoginStatus.LOGIN_REQUEST) {
-
+                
             // Generate Auth Token first
             String authToken = null;
             try {
@@ -375,7 +375,7 @@ final public class AuthServerHandler implements Runnable {
         if (request.getStatus() == LogoutStatus.LOGOUT_REQUEST) {
             boolean loggedOut = false;
             try (PreparedStatement query = this.clientDB.prepareStatement(
-                    "UPDATE client SET Login_Status = 'OFFLINE', Auth_Code = ? WHERE Auth_Code = ?)");) {
+                    "UPDATE client SET Login_Status = 'OFFLINE', Auth_Code = ? WHERE Auth_Code = ?");) {
 
                 query.setNull(1, Types.NULL);
                 query.setString(2, request.getAuthToken());
