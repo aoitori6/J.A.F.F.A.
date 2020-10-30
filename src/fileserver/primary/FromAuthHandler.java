@@ -122,15 +122,18 @@ final class FromAuthHandler implements Runnable {
                 if (timestamp != null) {
                     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
                     LocalDateTime deletionTimestamp = LocalDateTime.parse(timestamp, formatter);
-                    if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp))
+                    if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp)) {
                         toDelete = true;
+                        canDownload = false;
+                    }
                 }
 
                 // Check if download cap has been exceeded
                 if (downloadsRemaning != null && !toDelete) {
-                    if (Integer.parseInt(downloadsRemaning) == 0)
+                    if (Integer.parseInt(downloadsRemaning) == 0) {
                         toDelete = true;
-                    else if (currentThreads + 1 > Integer.parseInt(downloadsRemaning))
+                        canDownload = false;
+                    } else if (currentThreads + 1 > Integer.parseInt(downloadsRemaning))
                         canDownload = false;
                 }
 

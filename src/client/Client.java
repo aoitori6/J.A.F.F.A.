@@ -119,6 +119,8 @@ public class Client {
      */
 
     public boolean logout() {
+        HashMap<String, String> headers = new HashMap<String, String>(1);
+        headers.put("authToken", this.authToken);
 
         // Sending Logout Message to AuthServer
         if (!MessageHelpers.sendMessageTo(authSocket, new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, null, name)))
