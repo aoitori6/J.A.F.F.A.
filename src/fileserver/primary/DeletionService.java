@@ -41,7 +41,8 @@ class DeletionService implements Runnable {
         // Querying DB for deletable files
         PreparedStatement query = null;
         try {
-            query = this.fileDB.prepareStatement("SELECT Code FROM file WHERE Deletion_Timestamp <= ?");
+            query = this.fileDB
+                    .prepareStatement("SELECT Code FROM file WHERE (Deletion_Timestamp <= ? OR Deletable = TRUE)");
             String currTime = LocalDateTime.now(ZoneId.of("UTC"))
                     .format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"));
             query.setString(1, currTime);

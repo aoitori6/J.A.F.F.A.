@@ -99,7 +99,7 @@ final class FromAuthHandler implements Runnable {
             boolean toDelete = false;
             try {
                 query = fileDB.prepareStatement(
-                        "SELECT Current_Threads, Deletion_Timestamp, Downloads_Remaining FROM file WHERE Code = ?");
+                        "SELECT Code, Current_Threads, Deletion_Timestamp, Downloads_Remaining FROM file WHERE Code = ?");
 
                 // Querying DB for File details
                 query.setString(1, request.getCode());
