@@ -223,9 +223,10 @@ public class Client {
             long _temp_t = 0;
             // Temporary var to keep track of read Bytes
             int _temp_c = 0;
-            while ((_temp_t < Integer.parseInt(responseHeaders.get("fileSize")))
-                    && ((_temp_c = fileFromServer.read(writeBuffer, 0,
-                            Math.min(writeBuffer.length, Integer.parseInt(responseHeaders.get("fileSize"))))) != -1)) {
+            long fileSize = Long.parseLong(responseHeaders.get("fileSize"));
+            while ((_temp_t < fileSize) && ((_temp_c = fileFromServer.read(writeBuffer, 0,
+                    Math.min(writeBuffer.length, (int) Math.min(fileSize - _temp_t, Integer.MAX_VALUE)))) != -1)) {
+
                 fileOnClient.write(writeBuffer, 0, _temp_c);
                 fileOnClient.flush();
                 _temp_t += _temp_c;
@@ -237,7 +238,9 @@ public class Client {
             fileOnClient.close();
             return DownloadStatus.DOWNLOAD_SUCCESS;
 
-        } catch (IOException e) {
+        } catch (
+
+        IOException e) {
             e.printStackTrace();
             return DownloadStatus.DOWNLOAD_FAIL;
         } finally {
@@ -295,8 +298,9 @@ public class Client {
             long _temp_t = 0;
             // Temporary var to keep track of read Bytes
             int _temp_c = 0;
-            while ((_temp_t < filePath.toFile().length()) && ((_temp_c = fileOnClient.read(writeBuffer, 0,
-                    Math.min(writeBuffer.length, (int) filePath.toFile().length()))) != -1)) {
+            while ((_temp_t < filePath.toFile().length()) && ((_temp_c = fileOnClient.read(writeBuffer, 0, Math
+                    .min(writeBuffer.length, (int) Math.min(filePath.toFile().length(), Integer.MAX_VALUE)))) != -1)) {
+
                 fileToServer.write(writeBuffer, 0, _temp_c);
                 fileToServer.flush();
                 _temp_t += _temp_c;

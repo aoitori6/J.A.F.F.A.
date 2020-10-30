@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import message.*;
@@ -389,14 +390,12 @@ final public class AuthServerHandler implements Runnable {
 
     /**
      * Helper function that picks a valid Replica Server that the Client can connect
-     * to for downloading.
+     * to for downloading. Picks a random server to balance out the load.
      * 
      */
-    private static synchronized InetSocketAddress locateReplicaServer(ArrayList<InetSocketAddress> replicaAddrs) {
-        // TODO: Load balancing with multiple File Servers
-
+    private InetSocketAddress locateReplicaServer() {
         // For now direct it to a single File Server
-        return replicaAddrs.get(0);
+        return this.replicaAddrs.get(ThreadLocalRandom.current().nextInt(this.replicaAddrs.size()));
     }
 
     /**
@@ -440,7 +439,7 @@ final public class AuthServerHandler implements Runnable {
                 } else {
                     // If Primary File Server returned Success
                     HashMap<String, String> headers = new HashMap<String, String>();
-                    InetSocketAddress replicaAddr = AuthServerHandler.locateReplicaServer(this.replicaAddrs);
+                    InetSocketAddress replicaAddr = this.locateReplicaServer();
                     headers.put("addr", replicaAddr.getHostString());
                     headers.put("port", Integer.toString(replicaAddr.getPort()));
 
@@ -574,8 +573,9 @@ final public class AuthServerHandler implements Runnable {
                         long _temp_t = 0;
                         // Temporary var to keep track of read Bytes
                         int _temp_c = 0;
-                        while ((_temp_t < fileInfo.getSize()) && ((_temp_c = fileFromClient.read(writeBuffer, 0,
-                                Math.min(writeBuffer.length, (int) fileInfo.getSize()))) != -1)) {
+                        while ((_temp_t < fileInfo.getSize())
+                                && ((_temp_c = fileFromClient.read(writeBuffer, 0, Math.min(writeBuffer.length,
+                                        (int) Math.min(fileInfo.getSize(), Integer.MAX_VALUE)))) != -1)) {
                             fileToServer.write(writeBuffer, 0, _temp_c);
                             fileToServer.flush();
                             _temp_t += _temp_c;

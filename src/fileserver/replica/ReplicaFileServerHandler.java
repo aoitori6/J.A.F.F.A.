@@ -123,8 +123,10 @@ final public class ReplicaFileServerHandler implements Runnable {
                 long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
                 int _temp_c = 0;
-                while ((_temp_t < filePath.length()) && ((_temp_c = fileFromDB.read(writeBuffer, 0,
-                        Math.min(writeBuffer.length, (int) filePath.length()))) != -1)) {
+                while ((_temp_t < filePath.length())
+                        && ((_temp_c = fileFromDB.read(writeBuffer, 0, Math.min(writeBuffer.length,
+                                (int) Math.min(filePath.length() - _temp_t, Integer.MAX_VALUE)))) != -1)) {
+
                     fileToClient.write(writeBuffer, 0, _temp_c);
                     fileToClient.flush();
                     _temp_t += _temp_c;
@@ -241,8 +243,8 @@ final public class ReplicaFileServerHandler implements Runnable {
                     System.err.println(fileInfo.getSize());
                     while (_temp_t < fileInfo.getSize()) {
 
-                        _temp_c = fileFromPrimaryFileServer.read(readBuffer, 0,
-                                Math.min(readBuffer.length, (int) fileInfo.getSize()));
+                        _temp_c = fileFromPrimaryFileServer.read(readBuffer, 0, Math.min(readBuffer.length,
+                                (int) Math.min(fileInfo.getSize() - _temp_t, Integer.MAX_VALUE)));
 
                         System.err.println("READ: " + _temp_c);
                         fileToDB.write(readBuffer, 0, _temp_c);
