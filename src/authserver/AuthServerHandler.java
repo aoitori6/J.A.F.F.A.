@@ -846,9 +846,9 @@ final public class AuthServerHandler implements Runnable {
             // Check Auth Token
             // If not valid
             HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
-            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
+            if (!authResp.get("valid")) {
+                MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
+                        FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null, false));
                 return;
             }
 
@@ -857,9 +857,10 @@ final public class AuthServerHandler implements Runnable {
                     this.primaryServerAddress.getPort());) {
 
                 // Send a getAllFileDetails request to the Primary File Server
-                if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
+                if (!MessageHelpers.sendMessageTo(primaryFileSocket, new FileDetailsMessage(request.getStatus(), null,
+                        request.getSender(), request.getAuthToken(), authResp.get("isAdmin")))) {
                     MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
-                            FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
+                            FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null, false));
                     return;
                 }
 
@@ -871,14 +872,15 @@ final public class AuthServerHandler implements Runnable {
                 if (castResponse.getStatus() != FileDetailsStatus.FILEDETAILS_START) {
                     // If Primary File Server returned failure
                     MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
-                            FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
+                            FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null, false));
                     return;
                 }
 
                 // If Primary File Server returned success
                 // Sending a FileDetails Start message to the client
-                MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
-                        FileDetailsStatus.FILEDETAILS_START, castResponse.getHeaders(), AuthServer.SERVER_NAME, null));
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START, castResponse.getHeaders(),
+                                AuthServer.SERVER_NAME, null, false));
 
                 int count = Integer.parseInt(castResponse.getHeaders().get("count"));
                 ObjectOutputStream toClient = null;
@@ -901,13 +903,13 @@ final public class AuthServerHandler implements Runnable {
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
+                MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
+                        FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null, false));
                 return;
             }
         } else {
-            MessageHelpers.sendMessageTo(this.clientSocket,
-                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
+            MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL,
+                    null, AuthServer.SERVER_NAME, null, false));
             return;
         }
     }

@@ -424,31 +424,61 @@ final class FromAuthHandler implements Runnable {
             ArrayList<FileInfo> currFileInfo = new ArrayList<FileInfo>(0);
 
             // Querying associated File DB
-            try (Statement query = fileDB.createStatement();) {
-                ResultSet queryResp = query.executeQuery("SELECT * FROM file WHERE deletable = FALSE");
-                // Parsing Result
-                while (queryResp.next()) {
-                    Integer downloadsRemaining = null;
-                    if (queryResp.getString("downloads_remaining") != null) {
-                        downloadsRemaining = Integer.parseInt(queryResp.getString("downloads_remaining"));
+            // If admin, fetch all results
+            if (request.checkIfAdmin()) {
+                try (Statement query = fileDB.createStatement();) {
+                    ResultSet queryResp = query.executeQuery("SELECT * FROM file WHERE deletable = FALSE");
+                    // Parsing Result
+                    while (queryResp.next()) {
+                        Integer downloadsRemaining = null;
+                        if (queryResp.getString("downloads_remaining") != null) {
+                            downloadsRemaining = Integer.parseInt(queryResp.getString("downloads_remaining"));
+                        }
+                        currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
+                                PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile()
+                                        .length(),
+                                queryResp.getString("uploader"), downloadsRemaining,
+                                queryResp.getString("deletion_timestamp")));
                     }
-                    currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
-                            PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile()
-                                    .length(),
-                            queryResp.getString("uploader"), downloadsRemaining,
-                            queryResp.getString("deletion_timestamp")));
+                    this.fileDB.commit();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
                 }
-                this.fileDB.commit();
-            } catch (Exception e) {
-                e.printStackTrace();
-                return;
             }
+
+            // Otherwise fetch only User's uploaded files
+            else {
+                try (PreparedStatement query = fileDB
+                        .prepareStatement("SELECT * FROM file WHERE deletable = FALSE AND Uploader = ?");) {
+                    query.setString(1, request.getSender());
+                    ResultSet queryResp = query.executeQuery();
+
+                    // Parsing Result
+                    while (queryResp.next()) {
+                        Integer downloadsRemaining = null;
+                        if (queryResp.getString("downloads_remaining") != null) {
+                            downloadsRemaining = Integer.parseInt(queryResp.getString("downloads_remaining"));
+                        }
+                        currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
+                                PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile()
+                                        .length(),
+                                queryResp.getString("uploader"), downloadsRemaining,
+                                queryResp.getString("deletion_timestamp")));
+                    }
+                    this.fileDB.commit();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
+                }
+            }
+
             // Sending Start message to Auth Server
             HashMap<String, String> headers = new HashMap<String, String>();
             headers.put("count", String.valueOf(currFileInfo.size()));
             headers.put("timestamp", new Date().toString());
             MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
-                    headers, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
+                    headers, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, false));
             headers = null;
 
             ObjectOutputStream toClient = null;
@@ -469,7 +499,7 @@ final class FromAuthHandler implements Runnable {
 
         } else {
             MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL,
-                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, false));
         }
     }
 

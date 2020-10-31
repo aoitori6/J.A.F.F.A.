@@ -185,9 +185,15 @@ final public class InterfaceClient {
             System.out.println("ERROR. Failed to Delete File");
     }
 
-    private static void getAllFileData(Admin admin) {
-        ArrayList<FileInfo> allFilesInfo = admin.getAllFileData();
+    private static void getAllFileData(Client client) {
+        ArrayList<FileInfo> allFilesInfo = client.getAllFileData();
+
         if (allFilesInfo != null) {
+            if (allFilesInfo.size() == 0) {
+                System.out.println("You haven't uploaded any files!");
+                return;
+            }
+
             for (FileInfo fileInfo : allFilesInfo) {
                 System.out.println("Uploader: " + fileInfo.getUploader());
                 System.out.println("File Name: " + fileInfo.getName());
@@ -267,7 +273,8 @@ final public class InterfaceClient {
             System.out.println("1. Download File");
             System.out.println("2. Upload File");
             System.out.println("3. Delete File");
-            System.out.println("4. Logout");
+            System.out.println("4. View Uploaded File Details");
+            System.out.println("5. Logout");
             System.out.println("Enter your Choice");
             choice = conInput.nextByte();
             conInput.nextLine();
@@ -283,6 +290,9 @@ final public class InterfaceClient {
                     deleteFile(client, false);
                     break;
                 case 4:
+                    getAllFileData(client);
+                    break;
+                case 5:
                     if (client.logout()) {
                         System.out.println("Logged Out");
                         return;

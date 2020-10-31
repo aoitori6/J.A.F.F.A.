@@ -289,7 +289,7 @@ final class FromReplicaHandler implements Runnable {
                 headers.put("timestamp", new Date().toString());
                 MessageHelpers.sendMessageTo(this.replicaServer,
                         new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START, headers,
-                                PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
+                                PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, true));
                 headers = null;
 
                 // Beginning transfer of details
@@ -305,7 +305,7 @@ final class FromReplicaHandler implements Runnable {
 
         } else {
             MessageHelpers.sendMessageTo(this.replicaServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL,
-                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, true));
         }
     }
 
