@@ -15,14 +15,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-import fileserver.primary.PrimaryFileServer;
 import message.*;
 import misc.FileInfo;
 import statuscodes.DeleteStatus;
@@ -31,6 +31,7 @@ import statuscodes.ErrorStatus;
 import statuscodes.FileDetailsStatus;
 import statuscodes.LoginStatus;
 import statuscodes.LogoutStatus;
+import statuscodes.PingStatus;
 import statuscodes.RegisterStatus;
 import statuscodes.SyncDeleteStatus;
 import statuscodes.SyncUploadStatus;
@@ -41,15 +42,17 @@ final public class AuthServerHandler implements Runnable {
     private final Connection clientDB;
     private final InetSocketAddress primaryServerAddress;
 
-    private ArrayList<InetSocketAddress> replicaAddrs = new ArrayList<InetSocketAddress>(1);
+    private CopyOnWriteArrayList<InetSocketAddress> replicaAddrs;
+    private final ExecutorService clientThreadPool;
 
     AuthServerHandler(Socket clientSocket, Connection clientDB, InetSocketAddress primaryServerAddress,
-            ArrayList<InetSocketAddress> replicaAddrs) {
+            CopyOnWriteArrayList<InetSocketAddress> replicaAddrs, ExecutorService clientThreadPool) {
         this.clientSocket = clientSocket;
         this.clientDB = clientDB;
         this.primaryServerAddress = primaryServerAddress;
 
         this.replicaAddrs = replicaAddrs;
+        this.clientThreadPool = clientThreadPool;
     }
 
     @Override
@@ -59,38 +62,44 @@ final public class AuthServerHandler implements Runnable {
      * looking at the status field.
      */
     public void run() {
-        listenLoop: while (!this.clientSocket.isClosed()) {
-            // Expect a Message from the Client
-            Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
-            System.out.println(request);
-            // Central Logic
-            // Execute different methods after checking Message status
+        // listenLoop: while (!this.clientSocket.isClosed()) {
+        // Expect a Message from the Client
+        Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
+        System.out.println(request);
+        // Central Logic
+        // Execute different methods after checking Message status
 
-            switch (request.getRequestKind()) {
-                case Login:
-                    logInUser((LoginMessage) request);
-                    break;
-                case Register:
-                    registerUser((RegisterMessage) request);
-                    break;
-                case Logout:
-                    logoutUser((LogoutMessage) request);
-                    break;
-                case Download:
-                    downloadRequest((DownloadMessage) request);
-                    break;
-                case Upload:
-                    uploadRequest((UploadMessage) request);
-                    break;
-                case Delete:
-                    deleteFileRequest((DeleteMessage) request);
-                    break;
-                case FileDetails:
-                    getAllFileDataRequest((FileDetailsMessage) request);
-                default:
-                    generateErrorMessage(request);
-                    break listenLoop;
-            }
+        switch (request.getRequestKind()) {
+            case Login:
+                logInUser((LoginMessage) request);
+                break;
+            case Register:
+                registerUser((RegisterMessage) request);
+                break;
+            case Logout:
+                logoutUser((LogoutMessage) request);
+                break;
+            case Download:
+                downloadRequest((DownloadMessage) request);
+                break;
+            case Upload:
+                uploadRequest((UploadMessage) request);
+                break;
+            case Delete:
+                deleteFileRequest((DeleteMessage) request);
+                break;
+            case FileDetails:
+                getAllFileDataRequest((FileDetailsMessage) request);
+            default:
+                generateErrorMessage(request);
+                break;
+        }
+        // }
+
+        try {
+            this.clientSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -418,7 +427,32 @@ final public class AuthServerHandler implements Runnable {
      * 
      */
     private InetSocketAddress locateReplicaServer() {
-        return this.replicaAddrs.get(ThreadLocalRandom.current().nextInt(this.replicaAddrs.size()));
+        // Find the right server
+        int index = ThreadLocalRandom.current().nextInt(this.replicaAddrs.size());
+        Iterator<InetSocketAddress> itr = this.replicaAddrs.iterator();
+
+        // If list is empty
+        if (!itr.hasNext())
+            return null;
+
+        InetSocketAddress addr = null;
+        for (int i = 0; i < index - 1 && itr.hasNext(); ++i)
+            addr = itr.next();
+
+        // Try pinging it to see if its alive
+        try (Socket tempConn = new Socket(addr.getAddress(), addr.getPort());) {
+            MessageHelpers.sendMessageTo(tempConn, new PingMessage(PingStatus.PING_START, null, "Auth Server"));
+            Message received = MessageHelpers.receiveMessageFrom(tempConn);
+            PingMessage castResp = (PingMessage) received;
+
+            if (castResp.getStatus() == PingStatus.PING_RESPONSE)
+                return addr;
+        } catch (Exception e) {
+            e.printStackTrace();
+            this.replicaAddrs.remove(addr);
+        }
+
+        return locateReplicaServer();
     }
 
     /**
@@ -470,6 +504,13 @@ final public class AuthServerHandler implements Runnable {
                     // If Primary File Server returned Success
                     HashMap<String, String> headers = new HashMap<String, String>();
                     InetSocketAddress replicaAddr = this.locateReplicaServer();
+
+                    // If no Replica Servers exist anymore
+                    if (replicaAddr == null) {
+                        this.clientThreadPool.shutdown();
+                        return;
+                    }
+
                     headers.put("addr", replicaAddr.getHostString());
                     headers.put("port", Integer.toString(replicaAddr.getPort()));
 
@@ -510,7 +551,8 @@ final public class AuthServerHandler implements Runnable {
      * @expectedInstructionIDs: SYNCUPLOAD_SUCCESS, SYNCUPLOAD_FAIL,
      * @sentHeaders: code:Code
      */
-    private static synchronized void replicaSyncUpload(ArrayList<InetSocketAddress> replicaAddrs, String code) {
+    private static synchronized void replicaSyncUpload(CopyOnWriteArrayList<InetSocketAddress> replicaAddrs,
+            String code) {
         System.out.println(replicaAddrs.size());
 
         for (Iterator<InetSocketAddress> itr = replicaAddrs.iterator(); itr.hasNext();) {
@@ -687,7 +729,8 @@ final public class AuthServerHandler implements Runnable {
      * @expectedInstructionIDs: SYNCDELETE_SUCCESS, SYNCDELETE_FAIL,
      * @sentHeaders: code:Code
      */
-    private static synchronized void replicaSyncDelete(ArrayList<InetSocketAddress> replicaAddrs, String code) {
+    private static synchronized void replicaSyncDelete(CopyOnWriteArrayList<InetSocketAddress> replicaAddrs,
+            String code) {
         for (Iterator<InetSocketAddress> itr = replicaAddrs.iterator(); itr.hasNext();) {
             InetSocketAddress replicaAddr = itr.next();
             try (Socket replicaSocket = new Socket(replicaAddr.getAddress(), replicaAddr.getPort());) {
@@ -713,9 +756,8 @@ final public class AuthServerHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 System.err.println("ERROR: Communication Error with Replica Server " + replicaAddr.toString());
-                synchronized (replicaAddrs) {
-                    replicaAddrs.remove(replicaAddr);
-                }
+                replicaAddrs.remove(replicaAddr);
+
                 continue;
             }
         }

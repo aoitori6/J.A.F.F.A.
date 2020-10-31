@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +22,7 @@ public class AuthServer {
     private Connection clientDB;
     private InetSocketAddress primaryServerAddress = new InetSocketAddress("localhost", 12609);
 
-    private ArrayList<InetSocketAddress> replicaAddrs = new ArrayList<InetSocketAddress>(1);
+    private CopyOnWriteArrayList<InetSocketAddress> replicaAddrs = new CopyOnWriteArrayList<InetSocketAddress>();
 
     /**
      * Constructor that automatically starts the Auth Server as a localhost and
@@ -64,7 +65,7 @@ public class AuthServer {
         while (!clientThreadPool.isShutdown()) {
             try {
                 clientThreadPool.execute(new AuthServerHandler(authServer.accept(), this.clientDB,
-                        this.primaryServerAddress, this.replicaAddrs));
+                        this.primaryServerAddress, this.replicaAddrs, this.clientThreadPool));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -95,5 +96,9 @@ public class AuthServer {
      */
     public int getAuthServicePort() {
         return this.authService.getLocalPort();
+    }
+
+    public void shutDown(){
+        this.clientThreadPool.shutdown();
     }
 }

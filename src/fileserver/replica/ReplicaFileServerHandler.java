@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 import message.*;
 import misc.FileInfo;
 import statuscodes.DownloadStatus;
+import statuscodes.PingStatus;
 import statuscodes.SyncDeleteStatus;
 import statuscodes.SyncUploadStatus;
 
@@ -61,6 +62,9 @@ final public class ReplicaFileServerHandler implements Runnable {
             case SyncDelete:
                 deleteFile((SyncDeleteMessage) request);
                 break;
+            case Ping:
+                pingResponse((PingMessage) request);
+                break;
             default:
                 break;
         }
@@ -70,6 +74,18 @@ final public class ReplicaFileServerHandler implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Takes a PingMessage request from the Cline and responds with an empty
+     * message. Used to test if the server is still alive or not.
+     * 
+     * @param request PingMessage received from the Client
+     */
+    private void pingResponse(PingMessage request) {
+        MessageHelpers.sendMessageTo(this.clientSocket,
+                new PingMessage(PingStatus.PING_RESPONSE, null, "Replica Server"));
+
     }
 
     /**

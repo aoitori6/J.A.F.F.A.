@@ -1,5 +1,6 @@
 package client;
 
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -22,10 +23,13 @@ final public class InterfaceClient {
     }
 
     // Console Input
-    final static Scanner conInput = new Scanner(System.in);
+    private final static Scanner conInput = new Scanner(System.in);
 
     // Path to User's Home
-    final static String HOME = System.getProperty("user.home");
+    private final static String HOME = System.getProperty("user.home");
+
+    // Address of Auth Server
+    private final static InetSocketAddress toAuth = new InetSocketAddress("localhost", 9000);
 
     private static boolean register(Client client) {
         String username, password;
@@ -207,13 +211,9 @@ final public class InterfaceClient {
          * System.out.println("Enter Port of Authentication Server"); int port =
          * conInput.nextInt(); conInput.nextLine();
          */
-        String address = "localhost";
-        int port = 9000;
 
         // Connecting to AuthServer
-        client = new Client(address, port);
-        if (client == null)
-            return;
+        client = new Client(toAuth);
 
         // Authenticating Client
         // TODO: Handle Bad Logins
@@ -286,13 +286,9 @@ final public class InterfaceClient {
          * System.out.println("Enter Port of Authentication Server"); int port =
          * conInput.nextInt(); conInput.nextLine();
          */
-        String address = "localhost";
-        int port = 9000;
 
         // Connecting to AuthServer
-        admin = new Admin(address, port);
-        if (admin == null)
-            return;
+        admin = new Admin(toAuth);
 
         // Authenticating Client
         // TODO: Handle Bad Logins

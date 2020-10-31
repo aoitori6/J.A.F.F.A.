@@ -1,7 +1,6 @@
 package fileserver.replica;
 
 import java.io.IOException;
-import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
@@ -12,7 +11,6 @@ import java.util.concurrent.Executors;
 import java.sql.*;
 
 import message.AuthMessage;
-import message.MessageHelpers;
 import statuscodes.AuthStatus;
 
 public class ReplicaFileServer {

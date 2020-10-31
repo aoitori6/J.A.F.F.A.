@@ -5,6 +5,7 @@ import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,18 +19,13 @@ public class Client {
     protected boolean isAdmin;
 
     protected String name;
-    protected Socket authSocket;
-
     protected Socket fileSocket;
     protected String authToken;
 
-    public Client(String address, int port) {
-        try {
-            authSocket = new Socket(address, port);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        }
+    protected InetSocketAddress authAddr;
+
+    public Client(InetSocketAddress authAddr) {
+        this.authAddr = authAddr;
     }
 
     /**
@@ -44,25 +40,31 @@ public class Client {
      */
 
     public boolean register(String name, String pass) {
-        // Sending Register Message
-        if (!MessageHelpers.sendMessageTo(authSocket,
-                new RegisterMessage(RegisterStatus.REGISTER_REQUEST, pass, null, name)))
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Sending Register Message
+            if (!MessageHelpers.sendMessageTo(authSocket,
+                    new RegisterMessage(RegisterStatus.REGISTER_REQUEST, pass, null, name)))
+                return false;
+
+            // Reading AuthServer's response
+            Message response = MessageHelpers.receiveMessageFrom(authSocket);
+            RegisterMessage castResponse = (RegisterMessage) response;
+            response = null;
+
+            // Parsing AuthServer's response
+            if (castResponse.getStatus() != RegisterStatus.REGISTER_SUCCESS)
+                return false;
+
+            // Logging in user
+            if (logIn(name, pass, false) == false)
+                System.err.println("Critical ERROR. User registered but couldn't login!");
+
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
             return false;
+        }
 
-        // Reading AuthServer's response
-        Message response = MessageHelpers.receiveMessageFrom(authSocket);
-        RegisterMessage castResponse = (RegisterMessage) response;
-        response = null;
-
-        // Parsing AuthServer's response
-        if (castResponse.getStatus() != RegisterStatus.REGISTER_SUCCESS)
-            return false;
-
-        // Logging in user
-        if (logIn(name, pass, false) == false)
-            System.err.println("Critical ERROR. User registered but couldn't login!");
-
-        return true;
     }
 
     /**
@@ -79,26 +81,31 @@ public class Client {
      */
 
     public boolean logIn(String name, String pass, boolean isAdmin) {
-        // Sending login Message
-        if (!MessageHelpers.sendMessageTo(authSocket,
-                new LoginMessage(LoginStatus.LOGIN_REQUEST, pass, isAdmin, authToken, null, name)))
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Sending login Message
+            if (!MessageHelpers.sendMessageTo(authSocket,
+                    new LoginMessage(LoginStatus.LOGIN_REQUEST, pass, isAdmin, authToken, null, name)))
+                return false;
+
+            // Reading AuthServer's response
+            Message response = MessageHelpers.receiveMessageFrom(authSocket);
+            LoginMessage castResponse = (LoginMessage) response;
+            response = null;
+
+            // Parsing AuthServer's response
+            if (castResponse.getStatus() != LoginStatus.LOGIN_SUCCESS)
+                return false;
+
+            // Setting authToken if true
+            this.authToken = castResponse.getAuthToken();
+            this.name = name;
+            this.isAdmin = castResponse.getIfAdmin();
+
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
             return false;
-
-        // Reading AuthServer's response
-        Message response = MessageHelpers.receiveMessageFrom(authSocket);
-        LoginMessage castResponse = (LoginMessage) response;
-        response = null;
-
-        // Parsing AuthServer's response
-        if (castResponse.getStatus() != LoginStatus.LOGIN_SUCCESS)
-            return false;
-
-        // Setting authToken if true
-        this.authToken = castResponse.getAuthToken();
-        this.name = name;
-        this.isAdmin = castResponse.getIfAdmin();
-
-        return true;
+        }
     }
 
     /**
@@ -111,22 +118,26 @@ public class Client {
      */
 
     public boolean logout() {
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Sending Logout Message to AuthServer
+            if (!MessageHelpers.sendMessageTo(authSocket,
+                    new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, this.authToken, null, this.name)))
+                return false;
 
-        // Sending Logout Message to AuthServer
-        if (!MessageHelpers.sendMessageTo(authSocket,
-                new LogoutMessage(LogoutStatus.LOGOUT_REQUEST, this.authToken, null, this.name)))
+            // Reading AuthServer's response
+            Message response = MessageHelpers.receiveMessageFrom(authSocket);
+            LogoutMessage castResponse = (LogoutMessage) response;
+            response = null;
+
+            // Parsing AuthServer's response
+            if (castResponse.getStatus() != LogoutStatus.LOGOUT_SUCCESS)
+                return false;
+            else
+                return true;
+        } catch (Exception e) {
+            e.printStackTrace();
             return false;
-
-        // Reading AuthServer's response
-        Message response = MessageHelpers.receiveMessageFrom(authSocket);
-        LogoutMessage castResponse = (LogoutMessage) response;
-        response = null;
-
-        // Parsing AuthServer's response
-        if (castResponse.getStatus() != LogoutStatus.LOGOUT_SUCCESS)
-            return false;
-        else
-            return true;
+        }
     }
 
     /**
@@ -141,24 +152,28 @@ public class Client {
      * @expectedHeaders: fileName:FileName, size:FileSize
      */
     public DownloadStatus downloadFile(String code, Path savePath) {
-        // Adding the code to the headers
-
-        // Sending a DownloadRequest to the AuthServer
-        if (!MessageHelpers.sendMessageTo(authSocket,
-                new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, code, null, this.name, this.authToken)))
-            return DownloadStatus.DOWNLOAD_REQUEST_FAIL;
-
-        // Reading AuthServer's Response
-        Message authServerResponse = MessageHelpers.receiveMessageFrom(authSocket);
-        DownloadMessage authServerCastResponse = (DownloadMessage) authServerResponse;
-        authServerResponse = null;
-
-        if (authServerCastResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID)
-            return DownloadStatus.DOWNLOAD_REQUEST_INVALID;
-
-        // If DownloadRequest was valid, get the ReplicaServers address and port
         HashMap<String, String> fileServerAddress;
-        fileServerAddress = authServerCastResponse.getHeaders();
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Sending a DownloadRequest to the AuthServer
+            if (!MessageHelpers.sendMessageTo(authSocket,
+                    new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST, code, null, this.name, this.authToken)))
+                return DownloadStatus.DOWNLOAD_REQUEST_FAIL;
+
+            // Reading AuthServer's Response
+            Message authServerResponse = MessageHelpers.receiveMessageFrom(authSocket);
+            DownloadMessage authServerCastResponse = (DownloadMessage) authServerResponse;
+            authServerResponse = null;
+
+            if (authServerCastResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID)
+                return DownloadStatus.DOWNLOAD_REQUEST_INVALID;
+
+            // If DownloadRequest was valid, get the ReplicaServers address and port
+            fileServerAddress = authServerCastResponse.getHeaders();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return DownloadStatus.DOWNLOAD_FAIL;
+        }
 
         // Attempt to connect to FileServer
         try {
@@ -251,76 +266,81 @@ public class Client {
      */
 
     public String uploadFile(Path filePath, Integer downloadCap, String timestamp) {
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Send a UploadRequest to the File Server
+            // Expect UPLOAD_START if all is successful
+            if (!MessageHelpers.sendMessageTo(authSocket,
+                    new UploadMessage(UploadStatus.UPLOAD_REQUEST, null, this.name, this.authToken,
+                            new FileInfo(filePath.getFileName().toString(), null, filePath.toFile().length(), this.name,
+                                    downloadCap, timestamp))))
+                return null;
 
-        // Send a UploadRequest to the File Server
-        // Expect UPLOAD_START if all is successful
-        if (!MessageHelpers.sendMessageTo(authSocket,
-                new UploadMessage(UploadStatus.UPLOAD_REQUEST, null, this.name, this.authToken,
-                        new FileInfo(filePath.getFileName().toString(), null, filePath.toFile().length(), this.name,
-                                downloadCap, timestamp))))
-            return null;
+            // Parse Response
+            Message response = MessageHelpers.receiveMessageFrom(authSocket);
+            UploadMessage castResponse = (UploadMessage) response;
+            response = null;
 
-        // Parse Response
-        Message response = MessageHelpers.receiveMessageFrom(authSocket);
-        UploadMessage castResponse = (UploadMessage) response;
-        response = null;
+            if (castResponse.getStatus() != UploadStatus.UPLOAD_START)
+                return null;
 
-        if (castResponse.getStatus() != UploadStatus.UPLOAD_START)
-            return null;
+            // Start Uploading the file
+            // TODO: Set and fine tune buffer size
+            // Temporary Buffer Size in Bytes
 
-        // Start Uploading the file
-        // TODO: Set and fine tune buffer size
-        // Temporary Buffer Size in Bytes
+            int buffSize = 1_048_576;
+            byte[] writeBuffer = new byte[buffSize];
+            BufferedInputStream fileOnClient = null;
+            BufferedOutputStream fileToServer = null;
+            System.err.println("LOG: Beginning File Upload");
+            try {
+                // Begin connecting to file Server and establish read/write Streams
+                fileOnClient = new BufferedInputStream(new FileInputStream(filePath.toString()));
+                fileToServer = new BufferedOutputStream(authSocket.getOutputStream());
 
-        int buffSize = 1_048_576;
-        byte[] writeBuffer = new byte[buffSize];
-        BufferedInputStream fileOnClient = null;
-        BufferedOutputStream fileToServer = null;
-        System.err.println("LOG: Beginning File Upload");
-        try {
-            // Begin connecting to file Server and establish read/write Streams
-            fileOnClient = new BufferedInputStream(new FileInputStream(filePath.toString()));
-            fileToServer = new BufferedOutputStream(this.authSocket.getOutputStream());
+                System.err.println(filePath.toFile().length());
+                System.err.println(filePath.toFile().length());
 
-            System.err.println(filePath.toFile().length());
-            System.err.println(filePath.toFile().length());
+                // Temporary var to keep track of total bytes read
+                long _temp_t = 0;
+                // Temporary var to keep track of read Bytes
+                int _temp_c = 0;
+                while ((_temp_t < filePath.toFile().length())
+                        && ((_temp_c = fileOnClient.read(writeBuffer, 0, Math.min(writeBuffer.length,
+                                (int) Math.min(filePath.toFile().length(), Integer.MAX_VALUE)))) != -1)) {
 
-            // Temporary var to keep track of total bytes read
-            long _temp_t = 0;
-            // Temporary var to keep track of read Bytes
-            int _temp_c = 0;
-            while ((_temp_t < filePath.toFile().length()) && ((_temp_c = fileOnClient.read(writeBuffer, 0, Math
-                    .min(writeBuffer.length, (int) Math.min(filePath.toFile().length(), Integer.MAX_VALUE)))) != -1)) {
+                    fileToServer.write(writeBuffer, 0, _temp_c);
+                    fileToServer.flush();
+                    _temp_t += _temp_c;
+                }
 
-                fileToServer.write(writeBuffer, 0, _temp_c);
-                fileToServer.flush();
-                _temp_t += _temp_c;
+                // File successfully uploaded
+                System.err.println("LOG: Finishing File Upload");
+
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            } finally {
+                writeBuffer = null;
+                try {
+                    fileOnClient.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
 
-            // File successfully uploaded
-            System.err.println("LOG: Finishing File Upload");
+            // Parse Response
+            response = MessageHelpers.receiveMessageFrom(authSocket);
+            castResponse = (UploadMessage) response;
+            response = null;
 
-        } catch (IOException e) {
+            if (castResponse.getFileInfo() == null)
+                return null;
+            // Returning the Code if Everthing was successful
+            return castResponse.getFileInfo().getCode();
+        } catch (Exception e) {
             e.printStackTrace();
             return null;
-        } finally {
-            writeBuffer = null;
-            try {
-                fileOnClient.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
         }
-
-        // Parse Response
-        response = MessageHelpers.receiveMessageFrom(authSocket);
-        castResponse = (UploadMessage) response;
-        response = null;
-
-        if (castResponse.getFileInfo() == null)
-            return null;
-        // Returning the Code if Everthing was successful
-        return castResponse.getFileInfo().getCode();
 
     }
 
@@ -341,20 +361,25 @@ public class Client {
      */
 
     private boolean deleteFile(String code, boolean isAdmin) {
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Send a DeleteRequest to the File Server
+            if (!MessageHelpers.sendMessageTo(authSocket,
+                    new DeleteMessage(DeleteStatus.DELETE_REQUEST, code, null, this.name, this.authToken, isAdmin)))
+                return false;
 
-        // Send a DeleteRequest to the File Server
-        if (!MessageHelpers.sendMessageTo(authSocket,
-                new DeleteMessage(DeleteStatus.DELETE_REQUEST, code, null, this.name, this.authToken, isAdmin)))
+            // Response From the Server
+            Message response = MessageHelpers.receiveMessageFrom(authSocket);
+            DeleteMessage castResponse = (DeleteMessage) response;
+            response = null;
+
+            if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS)
+                return false;
+            else
+                return true;
+
+        } catch (Exception e) {
+            e.printStackTrace();
             return false;
-
-        // Response From the Server
-        Message response = MessageHelpers.receiveMessageFrom(authSocket);
-        DeleteMessage castResponse = (DeleteMessage) response;
-        response = null;
-
-        if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS)
-            return false;
-        else
-            return true;
+        }
     }
 }
