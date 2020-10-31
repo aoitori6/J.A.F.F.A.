@@ -1,0 +1,5 @@
+package signals.derived.upload;
+
+public enum UploadStatus {
+    UPLOAD_REQUEST, UPLOAD_REQUEST_INVALID, UPLOAD_REQUEST_FAIL, UPLOAD_START, UPLOAD_SUCCESS, UPLOAD_FAIL,
+};

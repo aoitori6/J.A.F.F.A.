@@ -1,0 +1,5 @@
+package signals.derived.makeadmin;
+
+public enum MakeAdminStatus {
+    MAKEADMIN_REQUEST, MAKEADMIN_REQUEST_INVALID, MAKEADMIN_REQUEST_FAIL, MAKEADMIN_SUCCESS, MAKEADMIN_FAIL,
+}
