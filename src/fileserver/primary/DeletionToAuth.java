@@ -1,6 +1,5 @@
 package fileserver.primary;
 
-import java.net.InetSocketAddress;
 import java.net.Socket;
 
 import message.DeleteMessage;
@@ -9,17 +8,20 @@ import message.MessageHelpers;
 import statuscodes.DeleteStatus;
 
 final class DeletionToAuth implements Runnable {
-    private final InetSocketAddress authServerAddr;
     private final String code;
 
-    DeletionToAuth(InetSocketAddress authServerAddr, String code) {
-        this.authServerAddr = authServerAddr;
+    DeletionToAuth(String code) {
         this.code = code;
     }
 
     @Override
+    /**
+     * Service responsible for sending DeleteMessage objects to the AuthServer to
+     * synchronize deletion.
+     */
     public void run() {
-        try (Socket toAuth = new Socket(this.authServerAddr.getAddress(), this.authServerAddr.getPort());) {
+        try (Socket toAuth = new Socket(PrimaryFileServer.authServerAddr.getAddress(),
+                PrimaryFileServer.authServerAddr.getPort());) {
 
             if (!MessageHelpers.sendMessageTo(toAuth, new DeleteMessage(DeleteStatus.DELETE_REQUEST, this.code, null,
                     PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, true)))

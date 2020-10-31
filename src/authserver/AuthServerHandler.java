@@ -149,22 +149,28 @@ final public class AuthServerHandler implements Runnable {
     private HashMap<String, Boolean> checkAuthToken(String client, String authToken) {
         HashMap<String, Boolean> resp = new HashMap<String, Boolean>(2);
         try (PreparedStatement query = this.clientDB
-                .prepareStatement("SELECT Admin_Status FROM client WHERE Username = ? AND Login_Status = 'ONLINE'");) {
+                .prepareStatement("SELECT Admin_Status FROM client WHERE Username = ? AND Auth_Code = ?");) {
             query.setString(1, client);
+            query.setString(2, authToken);
             ResultSet queryResp = query.executeQuery();
 
             if (queryResp.next()) {
                 resp.put("valid", true);
                 resp.put("isAdmin", queryResp.getBoolean("Admin_Status"));
+            } else {
+                resp.put("valid", false);
+                resp.put("isAdmin", false);
             }
 
-            return resp;
+            this.clientDB.commit();
+
         } catch (Exception e) {
             e.printStackTrace();
+            resp.put("valid", false);
+            resp.put("isAdmin", false);
+
         }
 
-        resp.put("valid", false);
-        resp.put("isAdmin", false);
         return resp;
     }
 
@@ -499,6 +505,7 @@ final public class AuthServerHandler implements Runnable {
                     // If no Replica Servers exist anymore
                     if (replicaAddr == null) {
                         this.clientThreadPool.shutdown();
+                        ;
                         return;
                     }
 

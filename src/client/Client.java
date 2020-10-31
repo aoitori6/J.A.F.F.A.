@@ -47,7 +47,7 @@ public class Client {
             if (!MessageHelpers.sendMessageTo(authSocket,
                     new RegisterMessage(RegisterStatus.REGISTER_REQUEST, pass, null, name)))
                 return false;
-
+            
             // Reading AuthServer's response
             Message response = MessageHelpers.receiveMessageFrom(authSocket);
             RegisterMessage castResponse = (RegisterMessage) response;

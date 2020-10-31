@@ -5,15 +5,11 @@ import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
 
 import misc.FileInfo;
 import message.*;
@@ -23,19 +19,9 @@ import statuscodes.SyncUploadStatus;
 
 final class FromReplicaHandler implements Runnable {
     private final Socket replicaServer;
-    private final InetSocketAddress authServerAddr;
-    private final Connection fileDB;
 
-    private final ExecutorService executionPool;
-
-    private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
-
-    FromReplicaHandler(Socket replicaServer, InetSocketAddress authServerAddr, Connection fileDB,
-            ExecutorService executionPool) {
+    FromReplicaHandler(Socket replicaServer) {
         this.replicaServer = replicaServer;
-        this.authServerAddr = authServerAddr;
-        this.fileDB = fileDB;
-        this.executionPool = executionPool;
     }
 
     @Override
@@ -46,9 +32,7 @@ final class FromReplicaHandler implements Runnable {
      */
     public void run() {
         // Expect a Message from the Client
-        System.err.println("ReplicaHandle: Expecting Message");
         Message request = MessageHelpers.receiveMessageFrom(this.replicaServer);
-        System.err.println("ReplicaHandle: Got Message");
 
         // Central Logic
         // Execute different methods after checking Message status
@@ -80,6 +64,7 @@ final class FromReplicaHandler implements Runnable {
      * <p>
      * If the Client's download was successful, it expects DOWNLOAD_SUCCESS and
      * decreases both Current_Threads and Downloads_Remaining fields in the File DB.
+     * This may trigger a Delete request.
      * 
      * <p>
      * If the Client's download wasn't successful, it expects DOWNLOAD_FAIL and
@@ -90,7 +75,6 @@ final class FromReplicaHandler implements Runnable {
      *                <p>
      *                Message Specs
      * @expectedInstructionIDs: DOWNLOAD_SUCCESS, DOWNLOAD_FAIL
-     * @expectedHeaders: code:Code, client:ClientName
      */
     private void resolveDownloadEffects(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_SUCCESS) {
@@ -98,7 +82,7 @@ final class FromReplicaHandler implements Runnable {
             boolean deletable = false;
             try {
                 // Update Downloads Remaining, Current Threads and Deletable if applicable
-                query = this.fileDB.prepareStatement(
+                query = PrimaryFileServer.fileDB.prepareStatement(
                         "UPDATE file SET Downloads_Remaining = Downloads_Remaining-1, Current_Threads = Current_Threads-1,"
                                 + "Deletable = IF(Downloads_Remaining <= 0, TRUE, Deletable) WHERE Code = ?");
                 query.setString(1, request.getCode());
@@ -106,7 +90,7 @@ final class FromReplicaHandler implements Runnable {
                 query.close();
 
                 // Check if the File can be deleted
-                query = this.fileDB.prepareStatement(
+                query = PrimaryFileServer.fileDB.prepareStatement(
                         "SELECT Code, Deletable FROM file WHERE (Code = ? AND Deletable = TRUE AND Current_Threads = 0)");
                 query.setString(1, request.getCode());
                 ResultSet queryResp = query.executeQuery();
@@ -115,7 +99,7 @@ final class FromReplicaHandler implements Runnable {
                 if (queryResp.next())
                     deletable = true;
 
-                this.fileDB.commit();
+                PrimaryFileServer.fileDB.commit();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -132,18 +116,18 @@ final class FromReplicaHandler implements Runnable {
             // If File is deletable, send a Delete request to Auth Server to ensure deletion
             // is sync'd
             if (deletable)
-                this.executionPool.submit(new DeletionToAuth(this.authServerAddr, request.getCode()));
+                PrimaryFileServer.executionPool.submit(new DeletionToAuth(request.getCode()));
 
         }
 
         else if (request.getStatus() == DownloadStatus.DOWNLOAD_FAIL) {
             // Update Current Threads
-            try (PreparedStatement query = this.fileDB
+            try (PreparedStatement query = PrimaryFileServer.fileDB
                     .prepareStatement("UPDATE file SET Current_Threads = Current_Threads-1 WHERE Code = ?");) {
 
                 query.setString(1, request.getCode());
                 query.executeUpdate();
-                this.fileDB.commit();
+                PrimaryFileServer.fileDB.commit();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -168,10 +152,10 @@ final class FromReplicaHandler implements Runnable {
     private void sendLocalFile(SyncUploadMessage request) {
         if (request.getStatus() == SyncUploadStatus.SYNCUPLOAD_REQUEST) {
 
-            System.err.println("Checking DB for File");
             // First query the File DB
             FileInfo fileInfo;
-            try (PreparedStatement query = this.fileDB.prepareStatement("SELECT * FROM file WHERE Code = ?");) {
+            try (PreparedStatement query = PrimaryFileServer.fileDB
+                    .prepareStatement("SELECT * FROM file WHERE Code = ?");) {
 
                 query.setString(1, request.getFileCode());
                 ResultSet queryResp = query.executeQuery();
@@ -184,10 +168,10 @@ final class FromReplicaHandler implements Runnable {
                 }
 
                 fileInfo = new FileInfo(queryResp.getString("Filename"), queryResp.getString("Code"),
-                        FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code"))
+                        PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code"))
                                 .resolve(queryResp.getString("Filename")).toFile().length(),
                         queryResp.getString("Uploader"), queryResp.getInt("Downloads_Remaining"), "Deletion_Timestamp");
-                this.fileDB.commit();
+                PrimaryFileServer.fileDB.commit();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -196,7 +180,6 @@ final class FromReplicaHandler implements Runnable {
                 return;
             }
 
-            System.err.println("Signaling Replica to Start");
             // Signal Replica to prepare for transfer
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_START,
                     null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, fileInfo.getCode(), fileInfo));
@@ -207,7 +190,7 @@ final class FromReplicaHandler implements Runnable {
             BufferedOutputStream fileToReplica = null;
 
             try (BufferedInputStream fileFromDB = new BufferedInputStream(
-                    new FileInputStream(FromReplicaHandler.FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode())
+                    new FileInputStream(PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode())
                             .resolve(fileInfo.getName()).toString()));) {
 
                 // Begin connecting to file Server and establish read/write Streams
@@ -237,9 +220,6 @@ final class FromReplicaHandler implements Runnable {
             }
 
             // File transfer done
-            System.err.println("File Transfer Done");
-            MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_SUCCESS,
-                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null, null));
         } else {
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
                     null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null, null));
@@ -266,17 +246,18 @@ final class FromReplicaHandler implements Runnable {
             ArrayList<FileInfo> currFileInfo = new ArrayList<FileInfo>(0);
 
             // Querying associated File DB
-            try (Statement query = fileDB.createStatement();) {
+            try (Statement query = PrimaryFileServer.fileDB.createStatement();) {
                 ResultSet queryResp = query.executeQuery("SELECT * FROM files WHERE deletable = FALSE");
                 // Parsing Result
                 while (queryResp.next()) {
                     currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
-                            FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile().length(),
+                            PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile()
+                                    .length(),
                             queryResp.getString("uploader"),
                             Integer.parseInt(queryResp.getString("downloads_remaining")),
                             queryResp.getString("deletion_timestamp")));
                 }
-                this.fileDB.commit();
+                PrimaryFileServer.fileDB.commit();
             } catch (SQLException e) {
                 e.printStackTrace();
                 return;

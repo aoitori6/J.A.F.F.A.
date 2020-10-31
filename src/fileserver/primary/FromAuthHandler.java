@@ -29,11 +29,9 @@ import statuscodes.UploadStatus;
 
 final class FromAuthHandler implements Runnable {
     private final Socket authServer;
-    private final Connection fileDB;
 
-    FromAuthHandler(Socket authServer, Connection fileDB) {
+    FromAuthHandler(Socket authServer) {
         this.authServer = authServer;
-        this.fileDB = fileDB;
     }
 
     @Override
@@ -89,13 +87,13 @@ final class FromAuthHandler implements Runnable {
     private void serverDownload(DownloadMessage request) {
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
 
-            // First check fileDB if Code exists
+            // First check PrimaryFileServer.fileDB if Code exists
             ResultSet queryResp;
             PreparedStatement query;
             boolean canDownload = true;
             boolean toDelete = false;
             try {
-                query = fileDB.prepareStatement(
+                query = PrimaryFileServer.fileDB.prepareStatement(
                         "SELECT Code, Current_Threads, Deletion_Timestamp, Downloads_Remaining FROM file WHERE Code = ?");
 
                 // Querying DB for File details
@@ -118,7 +116,7 @@ final class FromAuthHandler implements Runnable {
 
                 // Check if timestamp has been exceeded
                 if (timestamp != null) {
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
                     LocalDateTime deletionTimestamp = LocalDateTime.parse(timestamp, formatter);
                     if (LocalDateTime.now(ZoneId.of("UTC")).isAfter(deletionTimestamp)) {
                         toDelete = true;
@@ -147,12 +145,12 @@ final class FromAuthHandler implements Runnable {
                 }
 
                 // Executing and comitting changes
-                query = this.fileDB.prepareStatement(queryString);
+                query = PrimaryFileServer.fileDB.prepareStatement(queryString);
                 query.setString(1, request.getCode());
                 query.executeUpdate();
                 query.close();
 
-                this.fileDB.commit();
+                PrimaryFileServer.fileDB.commit();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -257,16 +255,13 @@ final class FromAuthHandler implements Runnable {
                 long _temp_t = 0;
                 // Temporary var to keep track of bytes read on each iteration
                 int _temp_c = 0;
-                System.err.println("Before Write: " + uploadInfo.getSize());
                 while ((_temp_t < uploadInfo.getSize())
                         && ((_temp_c = fileFromAuth.read(readBuffer, 0, Math.min(readBuffer.length,
                                 (int) Math.min(uploadInfo.getSize() - _temp_t, Integer.MAX_VALUE)))) != -1)) {
                     fileToDB.write(readBuffer, 0, _temp_c);
                     fileToDB.flush();
                     _temp_t += _temp_c;
-                    System.out.println("Read :" + _temp_t);
                 }
-                System.err.println("After Write");
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -280,8 +275,7 @@ final class FromAuthHandler implements Runnable {
 
             // File successfully transferred
             // If file was successfully uploaded, add an entry to the File DB
-            System.err.println("Inserting into DB");
-            try (PreparedStatement query = this.fileDB.prepareStatement(
+            try (PreparedStatement query = PrimaryFileServer.fileDB.prepareStatement(
                     "INSERT INTO file (Code, Uploader, Filename, Downloads_Remaining, Deletion_Timestamp) VALUES(?,?,?,?,?)");) {
 
                 query.setString(1, uploadInfo.getCode());
@@ -294,10 +288,9 @@ final class FromAuthHandler implements Runnable {
                     query.setNull(4, java.sql.Types.SMALLINT);
 
                 query.setString(5, uploadInfo.getDeletionTimestamp());
-                System.err.println(query.executeUpdate());
+                query.executeUpdate();
 
-                this.fileDB.commit();
-                System.err.println("Inserted into DB");
+                PrimaryFileServer.fileDB.commit();
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_FAIL, null,
@@ -308,7 +301,6 @@ final class FromAuthHandler implements Runnable {
             // Notify Auth of Success
             MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null,
                     PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, uploadInfo));
-            System.err.println("Finished Uploading");
         }
 
         else {
@@ -347,10 +339,11 @@ final class FromAuthHandler implements Runnable {
             try {
                 // Preparing Statement
                 if (request.checkAdmin()) {
-                    query = fileDB.prepareStatement("DELETE FROM file WHERE code = ?");
+                    query = PrimaryFileServer.fileDB.prepareStatement("DELETE FROM file WHERE code = ?");
                     query.setString(1, request.getCode());
                 } else {
-                    query = fileDB.prepareStatement("DELETE FROM file WHERE code = ? AND uploader = ?");
+                    query = PrimaryFileServer.fileDB
+                            .prepareStatement("DELETE FROM file WHERE code = ? AND uploader = ?");
                     query.setString(1, request.getCode());
                     query.setString(2, request.getSender());
                 }
@@ -359,10 +352,10 @@ final class FromAuthHandler implements Runnable {
                 if (query.executeUpdate() == 1)
                     deleted = true;
 
-                this.fileDB.commit();
+                PrimaryFileServer.fileDB.commit();
             } catch (Exception e) {
                 try {
-                    this.fileDB.rollback();
+                    PrimaryFileServer.fileDB.rollback();
                 } catch (SQLException e1) {
                     e1.printStackTrace();
                 }
@@ -426,7 +419,7 @@ final class FromAuthHandler implements Runnable {
             // Querying associated File DB
             // If admin, fetch all results
             if (request.checkIfAdmin()) {
-                try (Statement query = fileDB.createStatement();) {
+                try (Statement query = PrimaryFileServer.fileDB.createStatement();) {
                     ResultSet queryResp = query.executeQuery("SELECT * FROM file WHERE deletable = FALSE");
                     // Parsing Result
                     while (queryResp.next()) {
@@ -440,7 +433,7 @@ final class FromAuthHandler implements Runnable {
                                 queryResp.getString("uploader"), downloadsRemaining,
                                 queryResp.getString("deletion_timestamp")));
                     }
-                    this.fileDB.commit();
+                    PrimaryFileServer.fileDB.commit();
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;
@@ -449,7 +442,7 @@ final class FromAuthHandler implements Runnable {
 
             // Otherwise fetch only User's uploaded files
             else {
-                try (PreparedStatement query = fileDB
+                try (PreparedStatement query = PrimaryFileServer.fileDB
                         .prepareStatement("SELECT * FROM file WHERE deletable = FALSE AND Uploader = ?");) {
                     query.setString(1, request.getSender());
                     ResultSet queryResp = query.executeQuery();
@@ -466,7 +459,7 @@ final class FromAuthHandler implements Runnable {
                                 queryResp.getString("uploader"), downloadsRemaining,
                                 queryResp.getString("deletion_timestamp")));
                     }
-                    this.fileDB.commit();
+                    PrimaryFileServer.fileDB.commit();
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;

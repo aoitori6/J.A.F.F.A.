@@ -101,8 +101,7 @@ final public class ReplicaFileServerHandler implements Runnable {
      */
     private void serverDownload(DownloadMessage request) {
         // First check the File System if Code exists
-        File filePath = ReplicaFileServer.FILESTORAGEFOLDER_PATH.resolve(request.getCode()).toFile()
-                .listFiles()[0];
+        File filePath = ReplicaFileServer.FILESTORAGEFOLDER_PATH.resolve(request.getCode()).toFile().listFiles()[0];
         if (!filePath.exists()) {
             MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID,
                     request.getCode(), null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN));
@@ -273,11 +272,11 @@ final public class ReplicaFileServerHandler implements Runnable {
                             null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN, null, null));
                     return;
                 } finally {
-                    System.err.println("File Transfer Done from Primary Server");
-                    MessageHelpers.receiveMessageFrom(primarySocket);
                     readBuffer = null;
-                    // fileFromPrimaryFileServer = null;
+                    fileFromPrimaryFileServer = null;
                 }
+
+                System.err.println("File Transfer Done from Primary Server");
 
                 // If file was successfully uploaded, add an entry to the File DB
                 try (PreparedStatement query = this.fileDB
