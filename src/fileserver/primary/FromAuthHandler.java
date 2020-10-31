@@ -13,6 +13,7 @@ import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -273,6 +274,13 @@ final class FromAuthHandler implements Runnable {
                 fileFromAuth = null;
             }
 
+            String deletionTimestamp = null;
+            if (uploadInfo.getDeletionTimestamp() != null) {
+                long totalMinutes = Long.parseLong(uploadInfo.getDeletionTimestamp());
+                deletionTimestamp = LocalDateTime.now(ZoneId.of("UTC")).plus(totalMinutes, ChronoUnit.MINUTES)
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+
             // File successfully transferred
             // If file was successfully uploaded, add an entry to the File DB
             try (PreparedStatement query = PrimaryFileServer.fileDB.prepareStatement(
@@ -287,7 +295,7 @@ final class FromAuthHandler implements Runnable {
                 else
                     query.setNull(4, java.sql.Types.SMALLINT);
 
-                query.setString(5, uploadInfo.getDeletionTimestamp());
+                query.setString(5, deletionTimestamp);
                 query.executeUpdate();
 
                 PrimaryFileServer.fileDB.commit();
@@ -469,7 +477,8 @@ final class FromAuthHandler implements Runnable {
             // Sending Start message to Auth Server
             HashMap<String, String> headers = new HashMap<String, String>();
             headers.put("count", String.valueOf(currFileInfo.size()));
-            headers.put("timestamp", new Date().toString());
+            headers.put("timestamp",
+                    LocalDateTime.now(ZoneId.of("UTC")).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
             MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
                     headers, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, false));
             headers = null;
