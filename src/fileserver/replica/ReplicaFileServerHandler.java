@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,18 +21,11 @@ import statuscodes.PingStatus;
 import statuscodes.SyncDeleteStatus;
 import statuscodes.SyncUploadStatus;
 
-final public class ReplicaFileServerHandler implements Runnable {
+final class ReplicaFileServerHandler implements Runnable {
     private final Socket clientSocket;
-    private final Connection fileDB;
-    private final InetSocketAddress primaryServerAddr;
-    private final InetSocketAddress authServiceListener;
 
-    ReplicaFileServerHandler(Socket clientSocket, Connection fileDB, InetSocketAddress primaryServerAddr,
-            InetSocketAddress authServiceListener) {
+    ReplicaFileServerHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
-        this.fileDB = fileDB;
-        this.primaryServerAddr = primaryServerAddr;
-        this.authServiceListener = authServiceListener;
     }
 
     @Override
@@ -152,8 +144,8 @@ final public class ReplicaFileServerHandler implements Runnable {
             }
 
             // Notifying Primary Server about success state of download
-            try (Socket primarySocket = new Socket(this.primaryServerAddr.getAddress(),
-                    this.primaryServerAddr.getPort());) {
+            try (Socket primarySocket = new Socket(ReplicaFileServer.primaryServerAddr.getAddress(),
+                    ReplicaFileServer.primaryServerAddr.getPort());) {
                 // Successful
                 if (downloadSuccess) {
                     MessageHelpers.sendMessageTo(primarySocket, new DownloadMessage(DownloadStatus.DOWNLOAD_SUCCESS,
@@ -192,8 +184,8 @@ final public class ReplicaFileServerHandler implements Runnable {
         if (request.getStatus() == SyncUploadStatus.SYNCUPLOAD_REQUEST) {
 
             FileInfo fileInfo;
-            try (Socket primarySocket = new Socket(this.primaryServerAddr.getAddress(),
-                    this.primaryServerAddr.getPort());) {
+            try (Socket primarySocket = new Socket(ReplicaFileServer.primaryServerAddr.getAddress(),
+                    ReplicaFileServer.primaryServerAddr.getPort());) {
 
                 System.err.println("Sending Message to Primary Server");
                 // Send a request to the Primary File Server
@@ -279,13 +271,13 @@ final public class ReplicaFileServerHandler implements Runnable {
                 System.err.println("File Transfer Done from Primary Server");
 
                 // If file was successfully uploaded, add an entry to the File DB
-                try (PreparedStatement query = this.fileDB
+                try (PreparedStatement query = ReplicaFileServer.fileDB
                         .prepareStatement("INSERT INTO replica_file(code, uploader, filename) VALUES(?,?,?)");) {
                     query.setString(1, fileInfo.getCode());
                     query.setString(2, fileInfo.getUploader());
                     query.setString(3, fileInfo.getName());
                     query.executeUpdate();
-                    this.fileDB.commit();
+                    ReplicaFileServer.fileDB.commit();
                 } catch (Exception e) {
                     e.printStackTrace();
                     MessageHelpers.sendMessageTo(this.clientSocket,
@@ -338,13 +330,14 @@ final public class ReplicaFileServerHandler implements Runnable {
                 System.out.println("ERROR! Couldn't delete" + toBeDeleted.toString());
             }
 
-            try (PreparedStatement query = this.fileDB.prepareStatement("DELETE FROM replica_file WHERE Code = ?")) {
+            try (PreparedStatement query = ReplicaFileServer.fileDB
+                    .prepareStatement("DELETE FROM replica_file WHERE Code = ?")) {
                 query.setString(1, request.getFileCode());
                 query.executeUpdate();
-                this.fileDB.commit();
+                ReplicaFileServer.fileDB.commit();
             } catch (Exception e) {
                 try {
-                    this.fileDB.rollback();
+                    ReplicaFileServer.fileDB.rollback();
                 } catch (SQLException e1) {
                     e1.printStackTrace();
                 }
