@@ -318,7 +318,7 @@ final public class AuthServerHandler implements Runnable {
 
             try (PreparedStatement query = this.clientDB
                     .prepareStatement("UPDATE client_database.client SET Login_Status = 'ONLINE', Auth_Code = ? "
-                            + "WHERE (Username = ? AND Password = ? AND Login_Status = 'OFFLINE' AND Admin_Status = ?)")) {
+                            + "WHERE (Username = ? AND Password = ? AND Admin_Status = ?)")) {
 
                 query.setString(1, authToken);
                 query.setString(2, request.getSender());
