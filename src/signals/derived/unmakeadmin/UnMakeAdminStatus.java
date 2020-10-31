@@ -1,0 +1,5 @@
+package signals.derived.unmakeadmin;
+
+public enum UnMakeAdminStatus {
+    UNMAKEADMIN_REQUEST, UNMAKEADMIN_REQUEST_INVALID, UNMAKEADMIN_REQUEST_FAIL, UNMAKEADMIN_SUCCESS, UNMAKEADMIN_FAIL,
+}
