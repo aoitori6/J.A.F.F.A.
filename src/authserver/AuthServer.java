@@ -47,6 +47,7 @@ public class AuthServer {
     public AuthServer(HashMap<InetSocketAddress, InetSocketAddress> replicaAddrs) throws IOException, SQLException {
         // Initialize Auth Server to listen on some random port
         authServer = new ServerSocket(9000);
+        authServer.setSoTimeout((int) TimeUnit.MINUTES.toMillis(30));
 
         // Initalize Auth Service to listen on some random port
         authService = new ServerSocket(10000);
