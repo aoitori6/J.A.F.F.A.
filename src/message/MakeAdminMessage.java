@@ -26,7 +26,7 @@ public class MakeAdminMessage extends Message {
         return this.status;
     }
 
-    public String getCode() {
+    public String getNewAdmin() {
         return this.clientToAdmin;
     }
 

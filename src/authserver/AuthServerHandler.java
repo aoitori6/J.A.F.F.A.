@@ -56,7 +56,6 @@ final public class AuthServerHandler implements Runnable {
      * looking at the status field.
      */
     public void run() {
-        // listenLoop: while (!this.clientSocket.isClosed()) {
         // Expect a Message from the Client
         Message request = MessageHelpers.receiveMessageFrom(this.clientSocket);
         System.out.println(request);
@@ -88,10 +87,12 @@ final public class AuthServerHandler implements Runnable {
             case MakeAdmin:
                 makeUserAdmin((MakeAdminMessage) request);
                 break;
+            case UnMakeAdmin:
+                unMakeUserAdmin((UnMakeAdminMessage) request);
+                break;
             default:
                 break;
         }
-        // }
 
         try {
             this.clientSocket.close();
@@ -549,7 +550,7 @@ final public class AuthServerHandler implements Runnable {
             InetSocketAddress replicaAddr = itr.next();
 
             System.err.println("Creating Socket to " + replicaAddr);
-            try (Socket replicaSocket = new Socket(replicaAddr.getAddress(), replicaAddr.getPort());) {
+            try (Socket replicaSocket = new Socket(replicaAddr.getHostName(), replicaAddr.getPort());) {
                 System.err.println("Created Socket to " + replicaAddr);
                 // Auth Server will wait around 10 minutes for a response
                 replicaSocket.setSoTimeout((int) TimeUnit.MINUTES.toMillis(10));
@@ -925,6 +926,8 @@ final public class AuthServerHandler implements Runnable {
      */
     private void makeUserAdmin(MakeAdminMessage request) {
         if (request.getStatus() == MakeAdminStatus.MAKEADMIN_REQUEST) {
+            // Check Auth Token
+            // If not valid
             HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
             if (!authResp.get("valid") && !authResp.get("isAdmin")) {
                 MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
@@ -934,7 +937,8 @@ final public class AuthServerHandler implements Runnable {
 
             try (PreparedStatement query = this.clientDB
                     .prepareStatement("UPDATE client SET Admin_Status = TRUE WHERE Username = ? ")) {
-                query.setString(1, request.getSender());
+
+                query.setString(1, request.getNewAdmin());
                 if (query.executeUpdate() == 1) {
                     MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
                             MakeAdminStatus.MAKEADMIN_SUCCESS, null, null, AuthServer.SERVER_NAME, null, false));
@@ -944,6 +948,7 @@ final public class AuthServerHandler implements Runnable {
                             MakeAdminStatus.MAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
                     this.clientDB.rollback();
                 }
+
             } catch (Exception e) {
                 e.printStackTrace();
                 try {
@@ -954,9 +959,68 @@ final public class AuthServerHandler implements Runnable {
                 MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
                         MakeAdminStatus.MAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
             }
+
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(MakeAdminStatus.MAKEADMIN_REQUEST_FAIL,
                     null, null, AuthServer.SERVER_NAME, null, false));
+        }
+    }
+
+    /**
+     * Function that takes a UnMakeAdminMessage object from the Client, and tries to
+     * revoke Admin permissions from the specified User. If the specified User is
+     * not an Admin, there is no effect.
+     * 
+     * @param request MakeAdminMessage object from the Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: UNMAKEADMIN_REQUEST
+     * @sentInstructionIDs: UNMAKEADMIN_SUCCESS, UNMAKEADMIN_FAIL,
+     *                      UNMAKEADMIN_REQUESTFAIL,
+     */
+    private void unMakeUserAdmin(UnMakeAdminMessage request) {
+        if (request.getStatus() == UnMakeAdminStatus.UNMAKEADMIN_REQUEST) {
+            // Check Auth Token
+            // If not valid
+            HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
+            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new UnMakeAdminMessage(UnMakeAdminStatus.UNMAKEADMIN_REQUEST_INVALID, null, null,
+                                AuthServer.SERVER_NAME, null, false));
+                return;
+            }
+
+            try (PreparedStatement query = this.clientDB
+                    .prepareStatement("UPDATE client SET Admin_Status = FALSE WHERE Username = ? ")) {
+                query.setString(1, request.getOldAdmin());
+
+                if (query.executeUpdate() == 1) {
+
+                    MessageHelpers.sendMessageTo(this.clientSocket, new UnMakeAdminMessage(
+                            UnMakeAdminStatus.UNMAKEADMIN_SUCCESS, null, null, AuthServer.SERVER_NAME, null, false));
+                    this.clientDB.commit();
+                } else {
+                    MessageHelpers.sendMessageTo(this.clientSocket,
+                            new UnMakeAdminMessage(UnMakeAdminStatus.UNMAKEADMIN_REQUEST_INVALID, null, null,
+                                    AuthServer.SERVER_NAME, null, false));
+                    this.clientDB.rollback();
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                try {
+                    this.clientDB.rollback();
+                } catch (SQLException e1) {
+                    e1.printStackTrace();
+                }
+                MessageHelpers.sendMessageTo(this.clientSocket, new UnMakeAdminMessage(
+                        UnMakeAdminStatus.UNMAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
+            }
+
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket, new UnMakeAdminMessage(
+                    UnMakeAdminStatus.UNMAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
         }
     }
 }

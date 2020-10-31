@@ -199,6 +199,28 @@ final public class InterfaceClient {
         }
     }
 
+    private static void makeUserAdmin(Admin admin) {
+        System.out.println("Enter Client's Username (to be made Admin)");
+        String clientName = conInput.nextLine();
+
+        if (admin.makeUserAdmin(clientName)) {
+            System.out.println("Successfully made " + clientName + " an Admin!");
+        } else {
+            System.out.println("ERROR. Couldn't make " + clientName + " an Admin!");
+        }
+    }
+
+    private static void unMakeUserAdmin(Admin admin) {
+        System.out.println("Enter Client's Username (to be unmade Admin)");
+        String clientName = conInput.nextLine();
+
+        if (admin.unMakeUserAdmin(clientName)) {
+            System.out.println("Successfully unmade " + clientName + " an Admin!");
+        } else {
+            System.out.println("ERROR. Couldn't unmake " + clientName + " an Admin!");
+        }
+    }
+
     private static void clientMenu() {
         byte choice;
         Client client = null;
@@ -316,7 +338,9 @@ final public class InterfaceClient {
             System.out.println("2. Upload File");
             System.out.println("3. Delete File");
             System.out.println("4. View All Files");
-            System.out.println("5. Logout");
+            System.out.println("5. Promote User to Admin");
+            System.out.println("6. Demote User from Admin");
+            System.out.println("7. Logout");
             System.out.println("Enter your Choice");
             choice = conInput.nextByte();
             conInput.nextLine();
@@ -335,6 +359,12 @@ final public class InterfaceClient {
                     getAllFileData(admin);
                     break;
                 case 5:
+                    makeUserAdmin(admin);
+                    break;
+                case 6:
+                    unMakeUserAdmin(admin);
+                    break;
+                case 7:
                     if (admin.logout()) {
                         System.out.println("Logged Out");
                         return;
