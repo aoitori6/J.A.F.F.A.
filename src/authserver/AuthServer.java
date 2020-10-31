@@ -3,81 +3,94 @@ package authserver;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.Socket;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class AuthServer {
     private final static byte NTHREADS = 12;
     private final ExecutorService clientThreadPool;
     private final ServerSocket authServer;
+    private final ServerSocket authService;
+
+    protected final static String SERVER_NAME = "Auth Server";
+    protected final static String SERVER_TOKEN = "kQFqW";
 
     private final static String url = "jdbc:mysql://localhost:3306/client_database";
     private Connection clientDB;
 
-    private ArrayList<InetSocketAddress> fileServersList = new ArrayList<InetSocketAddress>(1);
-    private HashMap<InetSocketAddress, Thread> fileServers = new HashMap<InetSocketAddress, Thread>(1);
+    private InetSocketAddress primaryServerAddress = new InetSocketAddress("localhost", 12609);
+
+    private CopyOnWriteArrayList<InetSocketAddress> replicaAddrs = new CopyOnWriteArrayList<InetSocketAddress>();
+    private HashMap<InetSocketAddress, InetSocketAddress> replicaAddrsForClient = new HashMap<InetSocketAddress, InetSocketAddress>(
+            1);
 
     /**
      * Constructor that automatically starts the Auth Server as a localhost and
      * listens on a random port. The server doesn't begin accepting requests until
      * the start method is called.
      * 
-     * @param fileServersList List of File Servers the Auth Server will monitor and
-     *                        maintain Sockets to
+     * @param replicaAddrs List of Replica Servers the Auth Server will attempt to
+     *                     send synchronization requests to and will direct the
+     *                     Client to. Stored in a HashMap with the address the Auth
+     *                     will connect to as a key, and the value will be the
+     *                     address the Client will connect to.
      * @throws IOException  If Server couldn't be initialized
      * @throws SQLException If Server couldn't establish a connection to the MySQL
      *                      DB
      */
-    public AuthServer(ArrayList<InetSocketAddress> fileServersList) throws IOException, SQLException {
+    public AuthServer(HashMap<InetSocketAddress, InetSocketAddress> replicaAddrs) throws IOException, SQLException {
         // Initialize Auth Server to listen on some random port
-        authServer = new ServerSocket(0);
+        authServer = new ServerSocket(9000);
+
+        // Initalize Auth Service to listen on some random port
+        authService = new ServerSocket(10000);
 
         // Thread Pool to allocate Tasks to
         clientThreadPool = Executors.newFixedThreadPool(NTHREADS);
 
         // Client Database to authenticate against
         this.clientDB = DriverManager.getConnection(url, "root", "85246");
+        this.clientDB.setAutoCommit(false);
 
-        // Attempt to establish connections
-        for (InetSocketAddress fileServer : fileServersList) {
-            try {
-                fileServers.put(fileServer, new Thread(new AuthServerVerifyHandle(
-                        new Socket(fileServer.getHostName(), fileServer.getPort()), this.clientDB)));
-                this.fileServersList.add(fileServer);
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.err.format("ERROR: Couldn't connect to File Server %s! Ignoring.%n", fileServer.toString());
-            }
-        }
+        replicaAddrs.forEach((auth, client) -> {
+            this.replicaAddrsForClient.put(auth, client);
+            this.replicaAddrs.add(auth);
+        });
 
-        // Starting File Server listeners
-        for (InetSocketAddress fileServer : this.fileServersList) {
-            fileServers.get(fileServer).start();
-            System.err.format("INFO: Started Thread listened to File Server %s.%n", fileServer);
-        }
+        System.out.print(this.replicaAddrs.size());
     }
 
-    public void start() {
+    public void start() throws SQLException, IOException, InterruptedException {
         if (authServer.equals(null))
             throw new NullPointerException("Error. Auth Server was not initialized!");
+
+        // Begin listening for new Auth Requests
+        clientThreadPool.execute(new AuthServiceListener(this.authService, this.clientThreadPool, this.clientDB));
 
         // Begin listening for new Socket connections
         while (!clientThreadPool.isShutdown()) {
             try {
-                clientThreadPool.execute(new AuthServerHandler(authServer.accept(), clientDB));
+                clientThreadPool
+                        .execute(new AuthServerHandler(authServer.accept(), this.clientDB, this.primaryServerAddress,
+                                this.replicaAddrs, this.replicaAddrsForClient, this.clientThreadPool));
             } catch (IOException e) {
                 e.printStackTrace();
             }
 
         }
 
-        clientThreadPool.shutdown();
+        this.clientThreadPool.shutdown();
+        this.clientThreadPool.awaitTermination(15, TimeUnit.MINUTES);
+
+        // Closing Client DB Connection
+        this.clientDB.close();
+
     }
 
     /**
@@ -87,5 +100,18 @@ public class AuthServer {
      */
     public int getServerPort() {
         return this.authServer.getLocalPort();
+    }
+
+    /**
+     * Gets the port number associated with the Auth Service
+     * 
+     * @return Port number the Auth Service is listening on
+     */
+    public int getAuthServicePort() {
+        return this.authService.getLocalPort();
+    }
+
+    public void shutDown() {
+        this.clientThreadPool.shutdown();
     }
 }

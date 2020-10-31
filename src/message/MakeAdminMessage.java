@@ -2,32 +2,32 @@ package message;
 
 import java.util.HashMap;
 
-import statuscodes.DeleteStatus;
+import statuscodes.MakeAdminStatus;
 import statuscodes.RequestKind;
 
-public class DeleteMessage extends Message {
+public class MakeAdminMessage extends Message {
     private static final long serialVersionUID = 1L;
-    private final String code;
-    private final DeleteStatus status;
+    private final String clientToAdmin;
+    private final MakeAdminStatus status;
     private final String authToken;
     private final boolean isAdmin;
 
-    public DeleteMessage(DeleteStatus status, String code, HashMap<String, String> headers, String from,
+    public MakeAdminMessage(MakeAdminStatus status, String clientToAdmin, HashMap<String, String> headers, String from,
             String authToken, boolean isAdmin) {
-        super(RequestKind.Delete, headers, from);
+        super(RequestKind.MakeAdmin, headers, from);
         this.status = status;
-        this.code = code;
+        this.clientToAdmin = clientToAdmin;
         this.authToken = authToken;
         this.isAdmin = isAdmin;
     }
 
     // Accessors
-    public DeleteStatus getStatus() {
+    public MakeAdminStatus getStatus() {
         return this.status;
     }
 
-    public String getCode() {
-        return this.code;
+    public String getNewAdmin() {
+        return this.clientToAdmin;
     }
 
     public String getAuthToken() {

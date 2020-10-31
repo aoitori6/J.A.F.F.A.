@@ -1,9 +1,9 @@
-package fileserver;
+package fileserver.replica;
 
-public class InterfaceFileServer {
+public class InterfaceReplicaFileServer {
     public static void main(String[] args) {
         try {
-            FileServer serverOne = new FileServer();
+            ReplicaFileServer serverOne = new ReplicaFileServer();
             System.out.println("Port: " + serverOne.getServerPort());
             serverOne.start();
         } catch (Exception e) {

@@ -1,18 +1,28 @@
-package adminclient;
+package misc;
 
-public class FileInfo {
+import java.io.Serializable;
+
+public class FileInfo implements Serializable{
+    private static final long serialVersionUID = 1L;
     private String name;
     private String code;
     private String uploader;
-    private int downloadsRemaining;
+    private Integer downloadsRemaining;
     private String deletionTimestamp;
+    private long size;
 
-    public FileInfo(String name, String code, String uploader, int downloadsRemaining, String deletionTimestamp) {
+    public FileInfo(String name, String code, long size, String uploader, Integer downloadsRemaining,
+            String deletionTimestamp) {
         this.name = name;
         this.code = code;
+        this.size = size;
         this.uploader = uploader;
         this.downloadsRemaining = downloadsRemaining;
         this.deletionTimestamp = deletionTimestamp;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 
     public String getName() {
@@ -23,11 +33,15 @@ public class FileInfo {
         return this.code;
     }
 
+    public long getSize() {
+        return this.size;
+    }
+
     public String getUploader() {
         return this.uploader;
     }
 
-    public int getDownloadsRemaining() {
+    public Integer getDownloadsRemaining() {
         return this.downloadsRemaining;
     }
 

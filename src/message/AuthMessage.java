@@ -10,13 +10,15 @@ public class AuthMessage extends Message {
     private final AuthStatus status;
     private final String clientName;
     private final String authToken;
+    private final boolean isClientAdmin;
 
     public AuthMessage(AuthStatus status, HashMap<String, String> headers, String from, String clientName,
-            String authToken) {
+            String authToken, boolean isClientAdmin) {
         super(RequestKind.Upload, headers, from);
         this.status = status;
         this.clientName = clientName;
         this.authToken = authToken;
+        this.isClientAdmin = isClientAdmin;
     }
 
     // Accessors
@@ -30,5 +32,9 @@ public class AuthMessage extends Message {
 
     public String getAuthToken() {
         return this.authToken;
+    }
+
+    public boolean getIfAdmin() {
+        return this.isClientAdmin;
     }
 }
