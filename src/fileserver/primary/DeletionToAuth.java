@@ -22,7 +22,7 @@ final class DeletionToAuth implements Runnable {
         try (Socket toAuth = new Socket(this.authServerAddr.getAddress(), this.authServerAddr.getPort());) {
 
             if (!MessageHelpers.sendMessageTo(toAuth, new DeleteMessage(DeleteStatus.DELETE_REQUEST, this.code, null,
-                    "Replica Server", "tempToken", true)))
+                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, true)))
                 throw new Exception("Couldn't delete File with Code: " + this.code);
 
             // Getting the response from the Auth Server

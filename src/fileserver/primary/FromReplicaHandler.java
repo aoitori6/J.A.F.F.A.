@@ -177,8 +177,9 @@ final class FromReplicaHandler implements Runnable {
                 ResultSet queryResp = query.executeQuery();
 
                 if (!queryResp.next()) {
-                    MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(
-                            SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Primary File Server", "tempToken", null, null));
+                    MessageHelpers.sendMessageTo(this.replicaServer,
+                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, PrimaryFileServer.SERVER_NAME,
+                                    PrimaryFileServer.SERVER_TOKEN, null, null));
                     return;
                 }
 
@@ -191,14 +192,14 @@ final class FromReplicaHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
-                        null, "Primary File Server", "tempToken", null, null));
+                        null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null, null));
                 return;
             }
 
             System.err.println("Signaling Replica to Start");
             // Signal Replica to prepare for transfer
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_START,
-                    null, "Primary File Server", "tempToken", fileInfo.getCode(), fileInfo));
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, fileInfo.getCode(), fileInfo));
 
             // Prep for File transfer
             int buffSize = 1_048_576;
@@ -227,7 +228,7 @@ final class FromReplicaHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
-                        null, "File Server", "tempServerKey", null, fileInfo));
+                        null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null, fileInfo));
                 return;
             } finally {
                 readBuffer = null;
@@ -238,10 +239,10 @@ final class FromReplicaHandler implements Runnable {
             // File transfer done
             System.err.println("File Transfer Done");
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_SUCCESS,
-                    null, "File Server", "tempServerKey", null, null));
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null, null));
         } else {
             MessageHelpers.sendMessageTo(this.replicaServer, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
-                    null, "Primary File Server", "tempToken", null, null));
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null, null));
         }
     }
 
@@ -286,8 +287,9 @@ final class FromReplicaHandler implements Runnable {
                 HashMap<String, String> headers = new HashMap<String, String>();
                 headers.put("count", String.valueOf(currFileInfo.size()));
                 headers.put("timestamp", new Date().toString());
-                MessageHelpers.sendMessageTo(this.replicaServer, new FileDetailsMessage(
-                        FileDetailsStatus.FILEDETAILS_START, headers, "File Server", "tempAuthToken"));
+                MessageHelpers.sendMessageTo(this.replicaServer,
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START, headers,
+                                PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
                 headers = null;
 
                 // Beginning transfer of details
@@ -302,8 +304,8 @@ final class FromReplicaHandler implements Runnable {
             }
 
         } else {
-            MessageHelpers.sendMessageTo(this.replicaServer,
-                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "File Server", "tempServerKey"));
+            MessageHelpers.sendMessageTo(this.replicaServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL,
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
         }
     }
 

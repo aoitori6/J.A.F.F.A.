@@ -120,7 +120,7 @@ final public class AuthServerHandler implements Runnable {
      */
     private void generateErrorMessage(Message request) {
         MessageHelpers.sendMessageTo(this.clientSocket,
-                new ErrorMessage(ErrorStatus.INVALID_TO_AUTH_REQUEST, request.getHeaders(), "Auth Server"));
+                new ErrorMessage(ErrorStatus.INVALID_TO_AUTH_REQUEST, request.getHeaders(), AuthServer.SERVER_NAME));
     }
 
     /**
@@ -136,9 +136,11 @@ final public class AuthServerHandler implements Runnable {
         boolean isValidToken = false;
         do {
             // Generate a random 5-char alphanumeric String
-            // 97 corresponds to 'a' and 122 to 'z
-            tempAuthID = new Random().ints(97, 122 + 1).limit(5)
-                    .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
+            // 48 is the lower limit and corresponds to 'a', 122 is the upper limit and
+            // corresponds to 'Z'
+            tempAuthID = new Random().ints(48, 122 + 1).filter((i) -> (i <= 57 || i >= 65) && (i <= 90 || i >= 97))
+                    .limit(5).collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                    .toString();
 
             // Query DB to see if String is unique
             PreparedStatement query = clientDB.prepareStatement("SELECT Auth_Code from client WHERE Auth_Code = ?");
@@ -246,7 +248,7 @@ final public class AuthServerHandler implements Runnable {
             } catch (SQLException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, null, "Auth Server"));
+                        new RegisterMessage(RegisterStatus.REGISTER_FAIL, null, null, AuthServer.SERVER_NAME));
                 return;
             }
 
@@ -272,21 +274,21 @@ final public class AuthServerHandler implements Runnable {
 
                     // Sending success response to Client
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new RegisterMessage(RegisterStatus.REGISTER_SUCCESS, null, null, "Auth Server"));
+                            new RegisterMessage(RegisterStatus.REGISTER_SUCCESS, null, null, AuthServer.SERVER_NAME));
                     return;
 
                 } catch (SQLException | IllegalArgumentException e) {
                     e.printStackTrace();
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, null, "Auth Server"));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new RegisterMessage(
+                            RegisterStatus.REGISTER_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME));
                     return;
                 }
             }
 
             else {
                 // User already exists, sending failure response to Client
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new RegisterMessage(RegisterStatus.REGISTER_REQUEST_INVALID, null, null, "Auth Server"));
+                MessageHelpers.sendMessageTo(this.clientSocket, new RegisterMessage(
+                        RegisterStatus.REGISTER_REQUEST_INVALID, null, null, AuthServer.SERVER_NAME));
                 return;
             }
         }
@@ -294,7 +296,7 @@ final public class AuthServerHandler implements Runnable {
         else {
             // Invalid login request
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, null, "Auth Server"));
+                    new RegisterMessage(RegisterStatus.REGISTER_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME));
             return;
         }
     }
@@ -324,8 +326,8 @@ final public class AuthServerHandler implements Runnable {
                 return;
             } finally {
                 if (authToken == null) {
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, null, null, "Auth Server"));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL,
+                            null, false, null, null, AuthServer.SERVER_NAME));
                 }
             }
 
@@ -355,23 +357,23 @@ final public class AuthServerHandler implements Runnable {
 
             } catch (SQLException e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, null, null, "Auth Server"));
+                MessageHelpers.sendMessageTo(this.clientSocket, new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null,
+                        false, null, null, AuthServer.SERVER_NAME));
                 return;
             }
 
             if (validLogin) {
                 MessageHelpers.sendMessageTo(this.clientSocket, new LoginMessage(LoginStatus.LOGIN_SUCCESS, null,
-                        request.getIfAdmin(), authToken, null, "Auth Server"));
+                        request.getIfAdmin(), authToken, null, AuthServer.SERVER_NAME));
             } else {
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, null, null, "Auth Server"));
+                MessageHelpers.sendMessageTo(this.clientSocket, new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null,
+                        false, null, null, AuthServer.SERVER_NAME));
             }
 
         } else {
             // Invalid login request
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, "Auth Server", null, null));
+                    new LoginMessage(LoginStatus.LOGIN_REQUEST_FAIL, null, false, AuthServer.SERVER_NAME, null, null));
             return;
         }
     }
@@ -408,22 +410,22 @@ final public class AuthServerHandler implements Runnable {
             } catch (SQLException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, null, "Auth Server"));
+                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME));
                 return;
             }
 
             if (loggedOut)
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LogoutMessage(LogoutStatus.LOGOUT_SUCCESS, null, null, "Auth Server"));
+                        new LogoutMessage(LogoutStatus.LOGOUT_SUCCESS, null, null, AuthServer.SERVER_NAME));
             else
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_INVALID, null, null, "Auth Server"));
+                        new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_INVALID, null, null, AuthServer.SERVER_NAME));
         }
 
         else {
             // Invalid logout request, Sending failure response to the client
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, null, "Auth Server"));
+                    new LogoutMessage(LogoutStatus.LOGOUT_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME));
             return;
         }
     }
@@ -451,7 +453,8 @@ final public class AuthServerHandler implements Runnable {
         // Try pinging it to see if its alive
         try (Socket tempConn = new Socket(addr.getAddress(), addr.getPort());) {
             System.out.println("CONNECTING TO: " + addr);
-            MessageHelpers.sendMessageTo(tempConn, new PingMessage(PingStatus.PING_START, null, "Auth Server"));
+            MessageHelpers.sendMessageTo(tempConn,
+                    new PingMessage(PingStatus.PING_START, null, AuthServer.SERVER_NAME));
             Message received = MessageHelpers.receiveMessageFrom(tempConn);
             PingMessage castResp = (PingMessage) received;
 
@@ -484,8 +487,8 @@ final public class AuthServerHandler implements Runnable {
             // Check Auth Token
             // If not valid
             if (!this.checkAuthToken(request.getSender(), request.getAuthToken()).get("valid")) {
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
+                MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                        DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null));
                 return;
             }
 
@@ -495,8 +498,8 @@ final public class AuthServerHandler implements Runnable {
 
                 // Send a download request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                            DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null));
                     return;
                 }
 
@@ -508,7 +511,7 @@ final public class AuthServerHandler implements Runnable {
                 if (castResponse.getStatus() != DownloadStatus.DOWNLOAD_REQUEST_VALID) {
                     // If Primary File Server returned failure
                     MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
-                            DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, "Auth Server", null));
+                            DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, AuthServer.SERVER_NAME, null));
                     return;
                 } else {
                     // If Primary File Server returned Success
@@ -525,19 +528,19 @@ final public class AuthServerHandler implements Runnable {
                     headers.put("port", Integer.toString(replicaAddr.getPort()));
 
                     MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
-                            DownloadStatus.DOWNLOAD_REQUEST_VALID, null, headers, "Auth Server", null));
+                            DownloadStatus.DOWNLOAD_REQUEST_VALID, null, headers, AuthServer.SERVER_NAME, null));
                     return;
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
+                MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(
+                        DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null));
                 return;
             }
 
         } else {
-            MessageHelpers.sendMessageTo(this.clientSocket,
-                    new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL, null, null, "Auth Server", null));
+            MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL,
+                    null, null, AuthServer.SERVER_NAME, null));
             return;
         }
     }
@@ -575,8 +578,9 @@ final public class AuthServerHandler implements Runnable {
 
                 System.err.println("Sending Message to " + replicaAddr);
                 // If message sending failed
-                if (!MessageHelpers.sendMessageTo(replicaSocket, new SyncUploadMessage(
-                        SyncUploadStatus.SYNCUPLOAD_REQUEST, null, "Auth Server", "tempAuthToken", code, null)))
+                if (!MessageHelpers.sendMessageTo(replicaSocket,
+                        new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_REQUEST, null, AuthServer.SERVER_NAME,
+                                "tempAuthToken", code, null)))
                     throw new Exception();
 
                 System.err.println("Receiving Message from " + replicaAddr);
@@ -620,7 +624,7 @@ final public class AuthServerHandler implements Runnable {
             // If not valid
             if (!this.checkAuthToken(request.getSender(), request.getAuthToken()).get("valid")) {
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, AuthServer.SERVER_NAME, null, null));
                 return;
             }
 
@@ -630,7 +634,7 @@ final public class AuthServerHandler implements Runnable {
                 // Send a upload request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                            new UploadMessage(UploadStatus.UPLOAD_FAIL, null, AuthServer.SERVER_NAME, null, null));
                     return;
                 }
 
@@ -643,13 +647,13 @@ final public class AuthServerHandler implements Runnable {
                 if (castResponse.getStatus() != UploadStatus.UPLOAD_START) {
                     // If Primary File Server returned failure
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                            new UploadMessage(UploadStatus.UPLOAD_FAIL, null, AuthServer.SERVER_NAME, null, null));
                     return;
                 } else {
                     // If Primary File Server returned success
                     // Sending UploadStart message to the client
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new UploadMessage(UploadStatus.UPLOAD_START, null, "Auth Server", null, null));
+                            new UploadMessage(UploadStatus.UPLOAD_START, null, AuthServer.SERVER_NAME, null, null));
 
                     int buffSize = 1_048_576;
                     byte[] writeBuffer = new byte[buffSize];
@@ -693,7 +697,7 @@ final public class AuthServerHandler implements Runnable {
 
                     if (castResponse.getStatus() != UploadStatus.UPLOAD_SUCCESS)
                         MessageHelpers.sendMessageTo(this.clientSocket, new UploadMessage(UploadStatus.UPLOAD_FAIL,
-                                null, "Auth Server", "tempAuthToken", null));
+                                null, AuthServer.SERVER_NAME, "tempAuthToken", null));
 
                     System.err.println("Notifying Replicas");
                     // Notify each Replica Server to pull the newly uploaded File. If any Replica
@@ -703,19 +707,19 @@ final public class AuthServerHandler implements Runnable {
 
                     // Notify Client
                     MessageHelpers.sendMessageTo(this.clientSocket, new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null,
-                            "Auth Server", "tempAuthToken", castResponse.getFileInfo()));
+                            AuthServer.SERVER_NAME, "tempAuthToken", castResponse.getFileInfo()));
                     System.err.println("Finished Notifying Client");
 
                 }
             } catch (IOException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "Auth Server", null, null));
+                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, AuthServer.SERVER_NAME, null, null));
                 return;
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new UploadMessage(UploadStatus.UPLOAD_REQUEST_INVALID, null, "Auth Server", null, null));
+                    new UploadMessage(UploadStatus.UPLOAD_REQUEST_INVALID, null, AuthServer.SERVER_NAME, null, null));
             return;
         }
     }
@@ -750,7 +754,7 @@ final public class AuthServerHandler implements Runnable {
 
                 // If message sending failed
                 if (!MessageHelpers.sendMessageTo(replicaSocket, new SyncDeleteMessage(
-                        SyncDeleteStatus.SYNCDELETE_REQUEST, null, "Auth Server", "tempAuthToken", code)))
+                        SyncDeleteStatus.SYNCDELETE_REQUEST, null, AuthServer.SERVER_NAME, "tempAuthToken", code)))
                     throw new Exception();
 
                 // Parsing response
@@ -816,13 +820,13 @@ final public class AuthServerHandler implements Runnable {
 
                 if (castResponse.getStatus() != DeleteStatus.DELETE_SUCCESS) {
                     // If Primary File Server returned failure
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_FAIL, null,
+                            null, AuthServer.SERVER_NAME, null, false));
                     return;
                 } else {
                     // If Primary File Server returned success
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null, "Auth Server", null, false));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null,
+                            null, AuthServer.SERVER_NAME, null, false));
 
                     // Syncing to Replicas
                     AuthServerHandler.replicaSyncDelete(this.replicaAddrs, request.getCode());
@@ -830,14 +834,14 @@ final public class AuthServerHandler implements Runnable {
             } catch (IOException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
+                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
                 return;
             }
         } else
 
         {
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new DeleteMessage(DeleteStatus.DELETE_INVALID, null, null, "Auth Server", null, false));
+                    new DeleteMessage(DeleteStatus.DELETE_INVALID, null, null, AuthServer.SERVER_NAME, null, false));
             return;
         }
     }
@@ -865,7 +869,7 @@ final public class AuthServerHandler implements Runnable {
             HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
             if (!authResp.get("valid") && !authResp.get("isAdmin")) {
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
                 return;
             }
 
@@ -875,8 +879,8 @@ final public class AuthServerHandler implements Runnable {
 
                 // Send a getAllFileDetails request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(primaryFileSocket, request)) {
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
+                            FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
                     return;
                 }
 
@@ -887,15 +891,15 @@ final public class AuthServerHandler implements Runnable {
 
                 if (castResponse.getStatus() != FileDetailsStatus.FILEDETAILS_START) {
                     // If Primary File Server returned failure
-                    MessageHelpers.sendMessageTo(this.clientSocket,
-                            new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                    MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
+                            FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
                     return;
                 }
 
                 // If Primary File Server returned success
                 // Sending a FileDetails Start message to the client
                 MessageHelpers.sendMessageTo(this.clientSocket, new FileDetailsMessage(
-                        FileDetailsStatus.FILEDETAILS_START, castResponse.getHeaders(), "Auth Server", null));
+                        FileDetailsStatus.FILEDETAILS_START, castResponse.getHeaders(), AuthServer.SERVER_NAME, null));
 
                 int count = Integer.parseInt(castResponse.getHeaders().get("count"));
                 ObjectOutputStream toClient = null;
@@ -919,12 +923,12 @@ final public class AuthServerHandler implements Runnable {
             } catch (IOException e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.clientSocket,
-                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                        new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
                 return;
             }
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket,
-                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "Auth Server", null));
+                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
             return;
         }
     }

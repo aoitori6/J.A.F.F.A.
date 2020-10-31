@@ -2,7 +2,6 @@ package fileserver.primary;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -17,8 +16,6 @@ class DeletionService implements Runnable {
     private final ExecutorService executionPool;
     private final Connection fileDB;
     private InetSocketAddress authServerAddr;
-
-    private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
 
     DeletionService(ExecutorService executionPool, InetSocketAddress authServerAddr, Connection fileDB) {
         this.executionPool = executionPool;
@@ -45,7 +42,7 @@ class DeletionService implements Runnable {
 
             // Deleting entries from DB
             while (queryResp.next())
-                fileCodes.add(FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")));
+                fileCodes.add(PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("Code")));
             query.close();
             this.fileDB.commit();
 

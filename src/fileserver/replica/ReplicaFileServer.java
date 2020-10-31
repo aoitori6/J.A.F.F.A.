@@ -6,6 +6,8 @@ import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.sql.*;
@@ -17,13 +19,18 @@ public class ReplicaFileServer {
     private final static byte NTHREADS = 100;
     private final ExecutorService threadPool;
 
-    private final ServerSocket fileServer;
-    private final InetSocketAddress authServiceListener = new InetSocketAddress("localhost", 10000);
-
-    private final InetSocketAddress primaryServerAddr = new InetSocketAddress("localhost", 12600);
+    protected final static String SERVER_NAME = "Replica File Server";
+    protected final static String SERVER_TOKEN = "324af5f00cd649af8020abdb7434c868337cd9ccfb281587306a0d9ab4764a50";
+    protected final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"),
+            "sharenow_replicadb");
 
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
     private final Connection fileDB;
+
+    private final ServerSocket fileServer;
+
+    private final InetSocketAddress authServiceListener = new InetSocketAddress("localhost", 10000);
+    private final InetSocketAddress primaryServerAddr = new InetSocketAddress("localhost", 12600);
 
     protected static boolean checkAuthToken(InetSocketAddress authServiceListener, String clientName, boolean isAdmin,
             String authToken) {

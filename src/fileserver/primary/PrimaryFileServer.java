@@ -3,6 +3,8 @@ package fileserver.primary;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -14,10 +16,16 @@ public class PrimaryFileServer {
     private final ExecutorService executionPool;
     private final ScheduledExecutorService fileCleanup;
 
-    private final ServerSocket authServerSocket;
-    private final ServerSocket replicaServerSocket;
+    protected final static String SERVER_NAME = "Primary File Server";
+    protected final static String SERVER_TOKEN = "JbaI6";
+    protected final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"),
+            "sharenow_primarydb");
+
     private final static String url = "jdbc:mysql://localhost:3306/file_database";
     private Connection fileDB;
+
+    private final ServerSocket authServerSocket;
+    private final ServerSocket replicaServerSocket;
 
     private InetSocketAddress authServerAddr;
 

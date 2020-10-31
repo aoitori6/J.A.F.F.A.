@@ -9,7 +9,6 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -31,8 +30,6 @@ import statuscodes.UploadStatus;
 final class FromAuthHandler implements Runnable {
     private final Socket authServer;
     private final Connection fileDB;
-
-    private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_primarydb");
 
     FromAuthHandler(Socket authServer, Connection fileDB) {
         this.authServer = authServer;
@@ -109,7 +106,7 @@ final class FromAuthHandler implements Runnable {
                 if (!queryResp.next()) {
                     MessageHelpers.sendMessageTo(this.authServer,
                             new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null,
-                                    "Primary File Server", "tempServerKey"));
+                                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
                     return;
                 }
 
@@ -160,25 +157,26 @@ final class FromAuthHandler implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL,
-                        null, null, "Primary File Server", "tempServerKey"));
+                        null, null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
                 return;
             }
 
             // File can be downloaded
             if (canDownload) {
                 MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_VALID,
-                        null, null, "Primary File Server", "tempServerKey"));
+                        null, null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
             }
 
             // File can't be downloaded
             else {
-                MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(
-                        DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null, "Primary File Server", "tempServerKey"));
+                MessageHelpers.sendMessageTo(this.authServer,
+                        new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID, null, null,
+                                PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
             }
 
         } else {
             MessageHelpers.sendMessageTo(this.authServer, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_FAIL,
-                    null, null, "Primary File Server", "tempServerKey"));
+                    null, null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
         }
     }
 
@@ -203,10 +201,10 @@ final class FromAuthHandler implements Runnable {
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
 
             // Check DB location in the File System to see if code already exists
-        } while (FILESTORAGEFOLDER_PATH.resolve(tempCode).toFile().exists() == true);
+        } while (PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(tempCode).toFile().exists() == true);
 
         // Creating new folder named with File Code and return the same
-        return Files.createDirectories(FILESTORAGEFOLDER_PATH.resolve(tempCode));
+        return Files.createDirectories(PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(tempCode));
     }
 
     /**
@@ -236,14 +234,14 @@ final class FromAuthHandler implements Runnable {
                 fileFolder = Files.createFile(fileFolder.resolve(uploadInfo.getName()));
             } catch (IOException e1) {
                 e1.printStackTrace();
-                MessageHelpers.sendMessageTo(this.authServer,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
+                MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_FAIL, null,
+                        PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null));
                 return;
             }
 
             // Code generated successfully, signal Client to begin transfer
-            MessageHelpers.sendMessageTo(this.authServer,
-                    new UploadMessage(UploadStatus.UPLOAD_START, null, "File Server", "tempServerKey", uploadInfo));
+            MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_START, null,
+                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, uploadInfo));
 
             // Prep for File transfer
             int buffSize = 1_048_576;
@@ -272,8 +270,8 @@ final class FromAuthHandler implements Runnable {
 
             } catch (Exception e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.authServer,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
+                MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_FAIL, null,
+                        PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null));
                 return;
             } finally {
                 readBuffer = null;
@@ -302,20 +300,20 @@ final class FromAuthHandler implements Runnable {
                 System.err.println("Inserted into DB");
             } catch (Exception e) {
                 e.printStackTrace();
-                MessageHelpers.sendMessageTo(this.authServer,
-                        new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
+                MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_FAIL, null,
+                        PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null));
                 return;
             }
 
             // Notify Auth of Success
-            MessageHelpers.sendMessageTo(this.authServer,
-                    new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null, "File Server", "tempServerKey", uploadInfo));
+            MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_SUCCESS, null,
+                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, uploadInfo));
             System.err.println("Finished Uploading");
         }
 
         else {
-            MessageHelpers.sendMessageTo(this.authServer,
-                    new UploadMessage(UploadStatus.UPLOAD_FAIL, null, "File Server", "tempServerKey", null));
+            MessageHelpers.sendMessageTo(this.authServer, new UploadMessage(UploadStatus.UPLOAD_FAIL, null,
+                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, null));
         }
 
     }
@@ -380,11 +378,11 @@ final class FromAuthHandler implements Runnable {
             // If it wasn't deleted from DB
             if (!deleted) {
                 MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null,
-                        "File Server", "tempServerKey", request.checkAdmin()));
+                        PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, request.checkAdmin()));
             }
 
             // If it was, delete it from the File System too
-            Path toBeDeleted = FromAuthHandler.FILESTORAGEFOLDER_PATH.resolve(request.getCode());
+            Path toBeDeleted = PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(request.getCode());
             try (Stream<Path> elements = Files.walk(toBeDeleted)) {
                 elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException e) {
@@ -393,7 +391,7 @@ final class FromAuthHandler implements Runnable {
             }
 
             MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_SUCCESS, null, null,
-                    "File Server", "tempServerKey", request.checkAdmin()));
+                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, request.checkAdmin()));
 
             // If directory wasn't deleted
             if (Files.exists(toBeDeleted))
@@ -402,7 +400,7 @@ final class FromAuthHandler implements Runnable {
 
         } else {
             MessageHelpers.sendMessageTo(this.authServer, new DeleteMessage(DeleteStatus.DELETE_INVALID, null, null,
-                    "File Server", "tempServerKey", request.checkAdmin()));
+                    PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN, request.checkAdmin()));
         }
     }
 
@@ -435,7 +433,8 @@ final class FromAuthHandler implements Runnable {
                         downloadsRemaining = Integer.parseInt(queryResp.getString("downloads_remaining"));
                     }
                     currFileInfo.add(new FileInfo(queryResp.getString("filename"), queryResp.getString("code"),
-                            FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile().length(),
+                            PrimaryFileServer.FILESTORAGEFOLDER_PATH.resolve(queryResp.getString("code")).toFile()
+                                    .length(),
                             queryResp.getString("uploader"), downloadsRemaining,
                             queryResp.getString("deletion_timestamp")));
                 }
@@ -449,7 +448,7 @@ final class FromAuthHandler implements Runnable {
             headers.put("count", String.valueOf(currFileInfo.size()));
             headers.put("timestamp", new Date().toString());
             MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
-                    headers, "File Server", "tempAuthToken"));
+                    headers, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
             headers = null;
 
             ObjectOutputStream toClient = null;
@@ -469,8 +468,8 @@ final class FromAuthHandler implements Runnable {
             }
 
         } else {
-            MessageHelpers.sendMessageTo(this.authServer,
-                    new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, "File Server", "tempServerKey"));
+            MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL,
+                    null, PrimaryFileServer.SERVER_NAME, PrimaryFileServer.SERVER_TOKEN));
         }
     }
 

@@ -18,8 +18,12 @@ public class AuthServer {
     private final ServerSocket authServer;
     private final ServerSocket authService;
 
+    protected final static String SERVER_NAME = "Auth Server";
+    protected final static String SERVER_TOKEN = "kQFqW";
+
     private final static String url = "jdbc:mysql://localhost:3306/client_database";
     private Connection clientDB;
+
     private InetSocketAddress primaryServerAddress = new InetSocketAddress("localhost", 12609);
 
     private CopyOnWriteArrayList<InetSocketAddress> replicaAddrs = new CopyOnWriteArrayList<InetSocketAddress>();

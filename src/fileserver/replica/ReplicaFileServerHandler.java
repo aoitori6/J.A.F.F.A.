@@ -10,7 +10,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.*;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -28,8 +27,6 @@ final public class ReplicaFileServerHandler implements Runnable {
     private final Connection fileDB;
     private final InetSocketAddress primaryServerAddr;
     private final InetSocketAddress authServiceListener;
-
-    private final static Path FILESTORAGEFOLDER_PATH = Paths.get(System.getProperty("user.home"), "sharenow_replicadb");
 
     ReplicaFileServerHandler(Socket clientSocket, Connection fileDB, InetSocketAddress primaryServerAddr,
             InetSocketAddress authServiceListener) {
@@ -84,7 +81,7 @@ final public class ReplicaFileServerHandler implements Runnable {
      */
     private void pingResponse(PingMessage request) {
         MessageHelpers.sendMessageTo(this.clientSocket,
-                new PingMessage(PingStatus.PING_RESPONSE, null, "Replica Server"));
+                new PingMessage(PingStatus.PING_RESPONSE, null, ReplicaFileServer.SERVER_NAME));
 
     }
 
@@ -104,11 +101,11 @@ final public class ReplicaFileServerHandler implements Runnable {
      */
     private void serverDownload(DownloadMessage request) {
         // First check the File System if Code exists
-        File filePath = ReplicaFileServerHandler.FILESTORAGEFOLDER_PATH.resolve(request.getCode()).toFile()
+        File filePath = ReplicaFileServer.FILESTORAGEFOLDER_PATH.resolve(request.getCode()).toFile()
                 .listFiles()[0];
         if (!filePath.exists()) {
             MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID,
-                    request.getCode(), null, "Replica File Server", "tempServerKey"));
+                    request.getCode(), null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN));
             return;
         }
 
@@ -122,7 +119,7 @@ final public class ReplicaFileServerHandler implements Runnable {
             headers.put("fileName", filePath.getName());
 
             MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_START, null,
-                    headers, "Replica File Server", "tempServerKey"));
+                    headers, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN));
 
             // Prep for File transfer
             int buffSize = 1_048_576;
@@ -161,13 +158,13 @@ final public class ReplicaFileServerHandler implements Runnable {
                 // Successful
                 if (downloadSuccess) {
                     MessageHelpers.sendMessageTo(primarySocket, new DownloadMessage(DownloadStatus.DOWNLOAD_SUCCESS,
-                            request.getCode(), null, "Replica File Server", "tempServerKey"));
+                            request.getCode(), null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN));
                 }
 
                 // Unsuccessful
                 else {
                     MessageHelpers.sendMessageTo(primarySocket, new DownloadMessage(DownloadStatus.DOWNLOAD_FAIL,
-                            request.getCode(), null, "Replica File Server", "tempServerKey"));
+                            request.getCode(), null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN));
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -176,7 +173,7 @@ final public class ReplicaFileServerHandler implements Runnable {
 
         else {
             MessageHelpers.sendMessageTo(this.clientSocket, new DownloadMessage(DownloadStatus.DOWNLOAD_REQUEST_INVALID,
-                    null, null, "Replica File Server", "tempServerKey"));
+                    null, null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN));
         }
     }
 
@@ -203,8 +200,8 @@ final public class ReplicaFileServerHandler implements Runnable {
                 // Send a request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(primarySocket, request)) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Replica File Server",
-                                    "tempServerKey", null, null));
+                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, ReplicaFileServer.SERVER_NAME,
+                                    ReplicaFileServer.SERVER_TOKEN, null, null));
                     return;
                 }
 
@@ -217,8 +214,8 @@ final public class ReplicaFileServerHandler implements Runnable {
                 // If Primary File Sever returned failure
                 if (castResponse.getStatus() != SyncUploadStatus.SYNCUPLOAD_START) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Replica File Server",
-                                    "tempServerKey", null, null));
+                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, ReplicaFileServer.SERVER_NAME,
+                                    ReplicaFileServer.SERVER_TOKEN, null, null));
                     return;
                 }
 
@@ -228,7 +225,7 @@ final public class ReplicaFileServerHandler implements Runnable {
                 try {
                     // Get the code sent by the Auth Server
                     fileInfo = castResponse.getFileInfo();
-                    filePath = FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode());
+                    filePath = ReplicaFileServer.FILESTORAGEFOLDER_PATH.resolve(fileInfo.getCode());
                     // Create the folders
                     Files.createDirectories(filePath);
                     // Create the File itself in the folder
@@ -236,8 +233,8 @@ final public class ReplicaFileServerHandler implements Runnable {
                 } catch (IOException e1) {
                     e1.printStackTrace();
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Replica File Server",
-                                    "tempServerKey", null, null));
+                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, ReplicaFileServer.SERVER_NAME,
+                                    ReplicaFileServer.SERVER_TOKEN, null, null));
                     return;
                 }
 
@@ -273,7 +270,7 @@ final public class ReplicaFileServerHandler implements Runnable {
                 } catch (Exception e) {
                     e.printStackTrace();
                     MessageHelpers.sendMessageTo(primarySocket, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
-                            null, "Replica File Server", "tempServerKey", null, null));
+                            null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN, null, null));
                     return;
                 } finally {
                     System.err.println("File Transfer Done from Primary Server");
@@ -293,8 +290,8 @@ final public class ReplicaFileServerHandler implements Runnable {
                 } catch (Exception e) {
                     e.printStackTrace();
                     MessageHelpers.sendMessageTo(this.clientSocket,
-                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, "Replica File Server",
-                                    "tempServerKey", null, null));
+                            new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL, null, ReplicaFileServer.SERVER_NAME,
+                                    ReplicaFileServer.SERVER_TOKEN, null, null));
                     return;
                 }
 
@@ -305,12 +302,12 @@ final public class ReplicaFileServerHandler implements Runnable {
             System.err.println("Sending Message to Auth");
             // Everything was successful, send a success message to authSever
             MessageHelpers.sendMessageTo(this.clientSocket, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_SUCCESS,
-                    null, "Replica File Server", "tempServerKey", null, null));
+                    null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN, null, null));
             return;
 
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket, new SyncUploadMessage(SyncUploadStatus.SYNCUPLOAD_FAIL,
-                    null, "Replica File Server", "tempServerKey", null, null));
+                    null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN, null, null));
             return;
         }
 
@@ -334,7 +331,7 @@ final public class ReplicaFileServerHandler implements Runnable {
         if (request.getStatus() == SyncDeleteStatus.SYNCDELETE_REQUEST) {
 
             // Attempt recursive deletion from the Filesystem
-            Path toBeDeleted = ReplicaFileServerHandler.FILESTORAGEFOLDER_PATH.resolve(request.getFileCode());
+            Path toBeDeleted = ReplicaFileServer.FILESTORAGEFOLDER_PATH.resolve(request.getFileCode());
             try (Stream<Path> elements = Files.walk(toBeDeleted)) {
                 elements.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException e) {
@@ -357,16 +354,17 @@ final public class ReplicaFileServerHandler implements Runnable {
 
             // If directory was deleted
             if (!Files.exists(toBeDeleted))
-                MessageHelpers.sendMessageTo(this.clientSocket, new SyncDeleteMessage(
-                        SyncDeleteStatus.SYNCDELETE_SUCCESS, null, "Replica File Server", "tempServerKey", null));
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new SyncDeleteMessage(SyncDeleteStatus.SYNCDELETE_SUCCESS, null, ReplicaFileServer.SERVER_NAME,
+                                ReplicaFileServer.SERVER_TOKEN, null));
 
             else
                 MessageHelpers.sendMessageTo(this.clientSocket, new SyncDeleteMessage(SyncDeleteStatus.SYNCDELETE_FAIL,
-                        null, "Replica File Server", "tempServerKey", null));
+                        null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN, null));
 
         } else {
             MessageHelpers.sendMessageTo(this.clientSocket, new SyncDeleteMessage(SyncDeleteStatus.SYNCDELETE_FAIL,
-                    null, "Replica File Server", "tempServerKey", null));
+                    null, ReplicaFileServer.SERVER_NAME, ReplicaFileServer.SERVER_TOKEN, null));
         }
     }
 }
