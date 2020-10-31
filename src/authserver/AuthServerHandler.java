@@ -52,6 +52,9 @@ final public class AuthServerHandler implements Runnable {
         this.primaryServerAddress = primaryServerAddress;
 
         this.replicaAddrs = replicaAddrs;
+        for (InetSocketAddress temp : this.replicaAddrs) {
+            System.out.println(temp);
+        }
         this.clientThreadPool = clientThreadPool;
     }
 
@@ -436,11 +439,14 @@ final public class AuthServerHandler implements Runnable {
             return null;
 
         InetSocketAddress addr = null;
-        for (int i = 0; i < index - 1 && itr.hasNext(); ++i)
+        for (int i = 0; i <= index && itr.hasNext(); ++i) {
             addr = itr.next();
+            System.out.println(addr);
+        }
 
         // Try pinging it to see if its alive
         try (Socket tempConn = new Socket(addr.getAddress(), addr.getPort());) {
+            System.out.println("CONNECTING TO: " + addr);
             MessageHelpers.sendMessageTo(tempConn, new PingMessage(PingStatus.PING_START, null, "Auth Server"));
             Message received = MessageHelpers.receiveMessageFrom(tempConn);
             PingMessage castResp = (PingMessage) received;

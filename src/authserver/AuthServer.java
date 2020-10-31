@@ -52,6 +52,7 @@ public class AuthServer {
         for (InetSocketAddress replicaAddr : replicaAddrs) {
             this.replicaAddrs.add(replicaAddr);
         }
+        System.out.print(this.replicaAddrs.size());
     }
 
     public void start() throws SQLException, IOException, InterruptedException {
@@ -98,7 +99,7 @@ public class AuthServer {
         return this.authService.getLocalPort();
     }
 
-    public void shutDown(){
+    public void shutDown() {
         this.clientThreadPool.shutdown();
     }
 }
