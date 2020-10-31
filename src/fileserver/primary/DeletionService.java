@@ -26,7 +26,7 @@ final class DeletionService implements Runnable {
             query = PrimaryFileServer.fileDB
                     .prepareStatement("SELECT Code FROM file WHERE (Deletion_Timestamp <= ? OR Deletable = TRUE)");
             String currTime = LocalDateTime.now(ZoneId.of("UTC"))
-                    .format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"));
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             query.setString(1, currTime);
             ResultSet queryResp = query.executeQuery();
 

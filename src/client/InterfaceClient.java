@@ -111,7 +111,7 @@ final public class InterfaceClient {
 
     private static void uploadFile(Client client) {
 
-        String timestamp;
+        String totalMinutes;
         String downloads;
         Integer downloadCap;
 
@@ -154,18 +154,13 @@ final public class InterfaceClient {
             int hours = conInput.nextInt();
             System.out.println("Enter the no.of minutes: ");
             int minutes = conInput.nextInt();
-
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
-            LocalDateTime ldt = LocalDateTime.now(ZoneId.of("UTC"));
-            long totalMinutes = days * 24 * 60 + hours * 60 + minutes;
-
-            timestamp = ldt.plus(totalMinutes, ChronoUnit.MINUTES).format(formatter);
+            totalMinutes = String.valueOf(days * 24 * 60 + hours * 60 + minutes);
         } else
-            timestamp = null;
+            totalMinutes = null;
         System.out.println("Querying Server");
 
         // Reciving The Code, Code Will Be null If Uploading Failed
-        String code = client.uploadFile(Paths.get(filePath), downloadCap, timestamp);
+        String code = client.uploadFile(Paths.get(filePath), downloadCap, totalMinutes);
         if (code != null) {
             System.out.println("File Uploaded Successfully");
             System.out.println("Code: " + code);
