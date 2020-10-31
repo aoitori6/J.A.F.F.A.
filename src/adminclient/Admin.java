@@ -66,4 +66,40 @@ public class Admin extends Client {
             return null;
         }
     }
+
+    /**
+     * Function that takes a Client username, and if valid grants them Admin status.
+     * If the Client is already an Admin, there is no effect.
+     * 
+     * @param clientToAdmin Name of Client to be granted Admin permissions
+     * @return {@code true} if Client was granted Admin permissions (or was already
+     *         an Admin), {@code false} otherwise
+     * 
+     *         <p>
+     *         Message Specs
+     * @sentInstructionIDs: MAKEADMIN_REQUEST
+     * @expectedInstructionIDs: MAKEADMIN_SUCCESS, MAKEADMIN_FAIL
+     */
+    public boolean makeUserAdmin(String clientToAdmin) {
+        try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
+            // Send a MakeAdminRequest to the Auth Server
+            // Expect MAKEADMIN_START if User exists and was made an Admin (or was already
+            // one)
+            MessageHelpers.sendMessageTo(authSocket, new MakeAdminMessage(MakeAdminStatus.MAKEADMIN_REQUEST,
+                    clientToAdmin, null, this.name, this.authToken, this.isAdmin));
+
+            Message resp = (Message) MessageHelpers.receiveMessageFrom(authSocket);
+            MakeAdminMessage castResp = (MakeAdminMessage) resp;
+            resp = null;
+
+            if (castResp.getStatus() == MakeAdminStatus.MAKEADMIN_SUCCESS)
+                return true;
+            else
+                return false;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
 }

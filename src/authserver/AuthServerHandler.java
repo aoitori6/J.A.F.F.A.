@@ -25,17 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 import message.*;
 import misc.FileInfo;
-import statuscodes.DeleteStatus;
-import statuscodes.DownloadStatus;
-import statuscodes.ErrorStatus;
-import statuscodes.FileDetailsStatus;
-import statuscodes.LoginStatus;
-import statuscodes.LogoutStatus;
-import statuscodes.PingStatus;
-import statuscodes.RegisterStatus;
-import statuscodes.SyncDeleteStatus;
-import statuscodes.SyncUploadStatus;
-import statuscodes.UploadStatus;
+import statuscodes.*;
 
 final public class AuthServerHandler implements Runnable {
     private final Socket clientSocket;
@@ -56,9 +46,6 @@ final public class AuthServerHandler implements Runnable {
         this.replicaAddrs = replicaAddrs;
         this.replicaAddrsForClient = replicaAddrsForClient;
 
-        for (InetSocketAddress temp : this.replicaAddrs) {
-            System.out.println(temp);
-        }
         this.clientThreadPool = clientThreadPool;
     }
 
@@ -97,8 +84,11 @@ final public class AuthServerHandler implements Runnable {
                 break;
             case FileDetails:
                 getAllFileDataRequest((FileDetailsMessage) request);
+                break;
+            case MakeAdmin:
+                makeUserAdmin((MakeAdminMessage) request);
+                break;
             default:
-                generateErrorMessage(request);
                 break;
         }
         // }
@@ -108,19 +98,6 @@ final public class AuthServerHandler implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    /**
-     * Function that generates and sends an ErrorMessage to the Client. Invoked only
-     * when a {@code Message} with an invalid RequestKind is received by the Server.
-     * Whether a specific RequestKind is invalid or not is dependant on the Server
-     * configuration.
-     * 
-     * @param request Received Message with invalid RequestKind
-     */
-    private void generateErrorMessage(Message request) {
-        MessageHelpers.sendMessageTo(this.clientSocket,
-                new ErrorMessage(ErrorStatus.INVALID_TO_AUTH_REQUEST, request.getHeaders(), AuthServer.SERVER_NAME));
     }
 
     /**
@@ -570,6 +547,7 @@ final public class AuthServerHandler implements Runnable {
 
         for (Iterator<InetSocketAddress> itr = replicaAddrs.iterator(); itr.hasNext();) {
             InetSocketAddress replicaAddr = itr.next();
+
             System.err.println("Creating Socket to " + replicaAddr);
             try (Socket replicaSocket = new Socket(replicaAddr.getAddress(), replicaAddr.getPort());) {
                 System.err.println("Created Socket to " + replicaAddr);
@@ -930,6 +908,55 @@ final public class AuthServerHandler implements Runnable {
             MessageHelpers.sendMessageTo(this.clientSocket,
                     new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_FAIL, null, AuthServer.SERVER_NAME, null));
             return;
+        }
+    }
+
+    /**
+     * Function that takes a MakeAdminMessage object from the Client, and tries to
+     * grant Admin permissions to the specified User. If the specified User is
+     * already an Admin, there is no effect.
+     * 
+     * @param request MakeAdminMessage object from the Client
+     * 
+     *                <p>
+     *                Message Specs
+     * @expectedInstructionIDs: MAKEADMIN_REQUEST
+     * @sentInstructionIDs: MAKEADMIN_SUCCESS, MAKEADMIN_FAIL, MAKEADMIN_REQUESTFAIL
+     */
+    private void makeUserAdmin(MakeAdminMessage request) {
+        if (request.getStatus() == MakeAdminStatus.MAKEADMIN_REQUEST) {
+            HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
+            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
+                MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
+                        MakeAdminStatus.MAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
+                return;
+            }
+
+            try (PreparedStatement query = this.clientDB
+                    .prepareStatement("UPDATE client SET Admin_Status = TRUE WHERE Username = ? ")) {
+                query.setString(1, request.getSender());
+                if (query.executeUpdate() == 1) {
+                    MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
+                            MakeAdminStatus.MAKEADMIN_SUCCESS, null, null, AuthServer.SERVER_NAME, null, false));
+                    this.clientDB.commit();
+                } else {
+                    MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
+                            MakeAdminStatus.MAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
+                    this.clientDB.rollback();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                try {
+                    this.clientDB.rollback();
+                } catch (SQLException e1) {
+                    e1.printStackTrace();
+                }
+                MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(
+                        MakeAdminStatus.MAKEADMIN_REQUEST_FAIL, null, null, AuthServer.SERVER_NAME, null, false));
+            }
+        } else {
+            MessageHelpers.sendMessageTo(this.clientSocket, new MakeAdminMessage(MakeAdminStatus.MAKEADMIN_REQUEST_FAIL,
+                    null, null, AuthServer.SERVER_NAME, null, false));
         }
     }
 }
