@@ -45,16 +45,19 @@ public class Admin extends Client {
         ArrayList<FileInfo> currFileDetails = null;
         ObjectInputStream fromServer = null;
         try {
-            currFileDetails = new ArrayList<FileInfo>(Integer.parseInt(castResponse.getHeaders().get("count")));
+            int size = Integer.parseInt(castResponse.getHeaders().get("count"));
+            currFileDetails = new ArrayList<FileInfo>(size);
             fromServer = new ObjectInputStream(this.authSocket.getInputStream());
 
-            for (int i = 0; i < currFileDetails.size(); ++i)
-                currFileDetails.add((FileInfo) fromServer.readObject());
+            for (int i = 0; i < size; ++i) {
+                FileInfo temp = (FileInfo) fromServer.readObject();
+                currFileDetails.add(temp);
+            }
 
             return currFileDetails;
         } catch (Exception e) {
             e.printStackTrace();
             return null;
-        }
+        } 
     }
 }

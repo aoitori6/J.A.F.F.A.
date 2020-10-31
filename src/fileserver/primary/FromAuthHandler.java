@@ -444,25 +444,28 @@ final class FromAuthHandler implements Runnable {
                 e.printStackTrace();
                 return;
             }
+            // Sending Start message to Auth Server
+            HashMap<String, String> headers = new HashMap<String, String>();
+            headers.put("count", String.valueOf(currFileInfo.size()));
+            headers.put("timestamp", new Date().toString());
+            MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(FileDetailsStatus.FILEDETAILS_START,
+                    headers, "File Server", "tempAuthToken"));
+            headers = null;
 
-            try (ObjectOutputStream toClient = new ObjectOutputStream(this.authServer.getOutputStream());) {
-                // Sending Start message to Auth Server
-                HashMap<String, String> headers = new HashMap<String, String>();
-                headers.put("count", String.valueOf(currFileInfo.size()));
-                headers.put("timestamp", new Date().toString());
-                MessageHelpers.sendMessageTo(this.authServer, new FileDetailsMessage(
-                        FileDetailsStatus.FILEDETAILS_START, headers, "File Server", "tempAuthToken"));
-                headers = null;
+            ObjectOutputStream toClient = null;
+            try {
+                toClient = new ObjectOutputStream(this.authServer.getOutputStream());
 
                 // Beginning transfer of details
-                for (FileInfo temp : currFileInfo)
+                for (FileInfo temp : currFileInfo) {
                     toClient.writeObject(temp);
-
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 return;
             } finally {
                 currFileInfo = null;
+                toClient = null;
             }
 
         } else {
