@@ -6,7 +6,7 @@ import java.net.ServerSocket;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -23,6 +23,8 @@ public class AuthServer {
     private InetSocketAddress primaryServerAddress = new InetSocketAddress("localhost", 12609);
 
     private CopyOnWriteArrayList<InetSocketAddress> replicaAddrs = new CopyOnWriteArrayList<InetSocketAddress>();
+    private HashMap<InetSocketAddress, InetSocketAddress> replicaAddrsForClient = new HashMap<InetSocketAddress, InetSocketAddress>(
+            1);
 
     /**
      * Constructor that automatically starts the Auth Server as a localhost and
@@ -30,12 +32,15 @@ public class AuthServer {
      * the start method is called.
      * 
      * @param replicaAddrs List of Replica Servers the Auth Server will attempt to
-     *                     send synchronization requests to.
+     *                     send synchronization requests to and will direct the
+     *                     Client to. Stored in a HashMap with the address the Auth
+     *                     will connect to as a key, and the value will be the
+     *                     address the Client will connect to.
      * @throws IOException  If Server couldn't be initialized
      * @throws SQLException If Server couldn't establish a connection to the MySQL
      *                      DB
      */
-    public AuthServer(ArrayList<InetSocketAddress> replicaAddrs) throws IOException, SQLException {
+    public AuthServer(HashMap<InetSocketAddress, InetSocketAddress> replicaAddrs) throws IOException, SQLException {
         // Initialize Auth Server to listen on some random port
         authServer = new ServerSocket(9000);
 
@@ -49,9 +54,11 @@ public class AuthServer {
         this.clientDB = DriverManager.getConnection(url, "root", "85246");
         this.clientDB.setAutoCommit(false);
 
-        for (InetSocketAddress replicaAddr : replicaAddrs) {
-            this.replicaAddrs.add(replicaAddr);
-        }
+        replicaAddrs.forEach((auth, client) -> {
+            this.replicaAddrsForClient.put(auth, client);
+            this.replicaAddrs.add(auth);
+        });
+
         System.out.print(this.replicaAddrs.size());
     }
 
@@ -65,8 +72,9 @@ public class AuthServer {
         // Begin listening for new Socket connections
         while (!clientThreadPool.isShutdown()) {
             try {
-                clientThreadPool.execute(new AuthServerHandler(authServer.accept(), this.clientDB,
-                        this.primaryServerAddress, this.replicaAddrs, this.clientThreadPool));
+                clientThreadPool
+                        .execute(new AuthServerHandler(authServer.accept(), this.clientDB, this.primaryServerAddress,
+                                this.replicaAddrs, this.replicaAddrsForClient, this.clientThreadPool));
             } catch (IOException e) {
                 e.printStackTrace();
             }

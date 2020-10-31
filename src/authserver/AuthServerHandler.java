@@ -43,15 +43,19 @@ final public class AuthServerHandler implements Runnable {
     private final InetSocketAddress primaryServerAddress;
 
     private CopyOnWriteArrayList<InetSocketAddress> replicaAddrs;
+    private HashMap<InetSocketAddress, InetSocketAddress> replicaAddrsForClient;
     private final ExecutorService clientThreadPool;
 
     AuthServerHandler(Socket clientSocket, Connection clientDB, InetSocketAddress primaryServerAddress,
-            CopyOnWriteArrayList<InetSocketAddress> replicaAddrs, ExecutorService clientThreadPool) {
+            CopyOnWriteArrayList<InetSocketAddress> replicaAddrs,
+            HashMap<InetSocketAddress, InetSocketAddress> replicaAddrsForClient, ExecutorService clientThreadPool) {
         this.clientSocket = clientSocket;
         this.clientDB = clientDB;
         this.primaryServerAddress = primaryServerAddress;
 
         this.replicaAddrs = replicaAddrs;
+        this.replicaAddrsForClient = replicaAddrsForClient;
+
         for (InetSocketAddress temp : this.replicaAddrs) {
             System.out.println(temp);
         }
@@ -452,7 +456,7 @@ final public class AuthServerHandler implements Runnable {
             PingMessage castResp = (PingMessage) received;
 
             if (castResp.getStatus() == PingStatus.PING_RESPONSE)
-                return addr;
+                return this.replicaAddrsForClient.get(addr);
         } catch (Exception e) {
             e.printStackTrace();
             this.replicaAddrs.remove(addr);
