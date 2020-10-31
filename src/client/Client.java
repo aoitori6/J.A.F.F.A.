@@ -344,12 +344,6 @@ public class Client {
 
     }
 
-    public boolean deleteFileWrapper(String code) {
-        boolean isAdmin = false;
-
-        return deleteFile(code, isAdmin);
-    }
-
     /**
      * @param code    File Code
      * @param isAdmin Is User Admin or Not
@@ -360,7 +354,7 @@ public class Client {
      * @expectedInstructionIDs: DELETE_SUCCESS, DELETE_FAIL, DELETE_INVALID
      */
 
-    private boolean deleteFile(String code, boolean isAdmin) {
+    public boolean deleteFile(String code, boolean isAdmin) {
         try (Socket authSocket = new Socket(this.authAddr.getAddress(), this.authAddr.getPort());) {
             // Send a DeleteRequest to the File Server
             if (!MessageHelpers.sendMessageTo(authSocket,

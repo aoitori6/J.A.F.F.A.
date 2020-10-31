@@ -789,14 +789,12 @@ final public class AuthServerHandler implements Runnable {
         if (request.getStatus() == DeleteStatus.DELETE_REQUEST) {
             // Check Auth Token
             // If not valid
-            // HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(),
-            // request.getAuthToken());
-            // if (!authResp.get("valid") && !authResp.get("isAdmin")) {
-            // MessageHelpers.sendMessageTo(this.clientSocket,
-            // new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null,
-            // false));
-            // return;
-            // }
+            HashMap<String, Boolean> authResp = this.checkAuthToken(request.getSender(), request.getAuthToken());
+            if (!authResp.get("valid") && !authResp.get("isAdmin")) {
+                MessageHelpers.sendMessageTo(this.clientSocket,
+                        new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
+                return;
+            }
 
             // TODO: Check Auth Token
             // Establishing connection to Primary File Server
@@ -805,7 +803,7 @@ final public class AuthServerHandler implements Runnable {
                 // Forward delete request to the Primary File Server
                 if (!MessageHelpers.sendMessageTo(primaryFileSocket,
                         new DeleteMessage(request.getStatus(), request.getCode(), request.getHeaders(),
-                                request.getSender(), request.getAuthToken(), /* authResp.get("isAdmin") */ true))) {
+                                request.getSender(), request.getAuthToken(), authResp.get("isAdmin")))) {
                     MessageHelpers.sendMessageTo(this.clientSocket,
                             new DeleteMessage(DeleteStatus.DELETE_FAIL, null, null, "Auth Server", null, false));
                     return;

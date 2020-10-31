@@ -173,13 +173,13 @@ final public class InterfaceClient {
             System.out.println("ERROR. Failed to Upload File");
     }
 
-    private static void deleteFile(Client client) {
+    private static void deleteFile(Client client, boolean isAdmin) {
 
         // Get File Code
         System.out.println("Enter File Code");
         String code = conInput.nextLine();
 
-        if (client.deleteFileWrapper(code))
+        if (client.deleteFile(code, isAdmin))
             System.out.println("File Deleted Successfully");
         else
             System.out.println("ERROR. Failed to Delete File");
@@ -258,7 +258,7 @@ final public class InterfaceClient {
                     uploadFile(client);
                     break;
                 case 3:
-                    deleteFile(client);
+                    deleteFile(client, false);
                     break;
                 case 4:
                     if (client.logout()) {
@@ -329,7 +329,7 @@ final public class InterfaceClient {
                     uploadFile(admin);
                     break;
                 case 3:
-                    deleteFile(admin);
+                    deleteFile(admin, true);
                     break;
                 case 4:
                     getAllFileData(admin);
