@@ -777,7 +777,6 @@ final class AuthServerHandler implements Runnable {
                 return;
             }
 
-            // TODO: Check Auth Token
             // Establishing connection to Primary File Server
             try (Socket primaryFileSocket = new Socket(AuthServer.primaryServerAddress.getAddress(),
                     AuthServer.primaryServerAddress.getPort());) {

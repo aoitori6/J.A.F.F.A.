@@ -27,7 +27,7 @@ final public class InterfaceClient {
     private final static String HOME = System.getProperty("user.home");
 
     // Address of Auth Server
-    private final static InetSocketAddress toAuth = new InetSocketAddress("localhost", 9000);
+    private final static InetSocketAddress toAuth = new InetSocketAddress("localhost", 14000);
 
     private static boolean register(RegularClient client) {
         Console console = System.console();
@@ -85,10 +85,6 @@ final public class InterfaceClient {
     }
 
     private static void downloadFile(RegularClient client) {
-
-        /*
-         * TODO: Check valid File Paths, Check existing Files, Check File Path for Linux
-         */
 
         // Get File Code
         System.out.println("Enter File Code");
@@ -239,7 +235,6 @@ final public class InterfaceClient {
         client = new RegularClient(toAuth);
 
         // Authenticating Client
-        // TODO: Handle Bad Logins
         auth: while (true) {
             System.out.println("1. Register");
             System.out.println("2. Login");
@@ -318,7 +313,6 @@ final public class InterfaceClient {
         admin = new AdminClient(toAuth);
 
         // Authenticating Client
-        // TODO: Handle Bad Logins
         auth: while (true) {
             System.out.println("1. Login");
             System.out.println("2. Exit");

@@ -103,7 +103,6 @@ final class ReplicaFileServerHandler implements Runnable {
 
         // If it does
         if (request.getStatus() == DownloadStatus.DOWNLOAD_REQUEST) {
-            // TODO: Re-checking auth token
 
             boolean downloadSuccess = false;
             HashMap<String, String> headers = new HashMap<String, String>(2);
@@ -181,7 +180,6 @@ final class ReplicaFileServerHandler implements Runnable {
      * @sentInstructionIDs: SYNCUPLOAD_START, SYNCUPLOAD_SUCCESS, SYNCUPLOAD_FAIL
      */
     private void serverUpload(SyncUploadMessage request) {
-        // TODO: Re-checking auth token
         if (request.getStatus() == SyncUploadStatus.SYNCUPLOAD_REQUEST) {
 
             FileInfo fileInfo;

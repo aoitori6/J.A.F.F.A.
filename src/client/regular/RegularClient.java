@@ -222,7 +222,6 @@ public class RegularClient {
             }
 
         // Start downloading the file
-        // TODO: Set and fine tune buffer size
         // Temporary Buffer Size in Bytes
         int buffSize = 1_048_576;
         byte[] writeBuffer = new byte[buffSize];
@@ -293,7 +292,6 @@ public class RegularClient {
                 return null;
 
             // Start Uploading the file
-            // TODO: Set and fine tune buffer size
             // Temporary Buffer Size in Bytes
 
             int buffSize = 1_048_576;

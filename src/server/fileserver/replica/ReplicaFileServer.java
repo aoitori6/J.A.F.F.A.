@@ -108,7 +108,7 @@ public class ReplicaFileServer {
     /**
      * Port on which the Replica File Server will listen for connections
      */
-    private static final int REPLICA_LISTENER_PORT = 12600;
+    private static final int REPLICA_LISTENER_PORT = 7689;
 
     /**
      * Helper function for the class to check a user's credentials. Currently
