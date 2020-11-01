@@ -102,7 +102,7 @@ final public class AuthServer {
     /**
      * Port on which the Auth Service will listen for connections from other Servers
      */
-    private static final int AUTHSERVICE_LISTENER_PORT = 12600;
+    private static final int AUTHSERVICE_LISTENER_PORT = 1000;
 
     /**
      * List of Replica Server addresses that the Auth Server will keep synchronized

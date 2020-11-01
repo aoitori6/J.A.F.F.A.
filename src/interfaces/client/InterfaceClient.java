@@ -1,5 +1,6 @@
 package interfaces.client;
 
+import java.io.Console;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -29,6 +30,7 @@ final public class InterfaceClient {
     private final static InetSocketAddress toAuth = new InetSocketAddress("localhost", 9000);
 
     private static boolean register(RegularClient client) {
+        Console console = System.console();
         String username, password;
         while (true) {
             System.out.println("Enter Username");
@@ -47,7 +49,7 @@ final public class InterfaceClient {
 
         while (true) {
             System.out.println("Enter Password");
-            password = conInput.nextLine();
+            password = String.valueOf(console.readPassword());
 
             Pattern pattern = Pattern.compile("[^a-zA-Z0-9]");
             Matcher matcher = pattern.matcher(password.trim());
@@ -60,7 +62,7 @@ final public class InterfaceClient {
                 break;
         }
         System.out.println("Confirm Password");
-        String confirmPassword = conInput.nextLine();
+        String confirmPassword = String.valueOf(console.readPassword());
 
         if (!password.equals(confirmPassword)) {
             System.out.println("Passwords do not match");
@@ -71,12 +73,13 @@ final public class InterfaceClient {
     }
 
     private static boolean logIn(RegularClient client, boolean isAdmin) {
+        Console console = System.console();
 
         System.out.println("Enter Username");
         String username = conInput.nextLine();
 
         System.out.println("Enter Password");
-        String password = conInput.nextLine();
+        String password = String.valueOf(console.readPassword());
 
         return client.logIn(username, password, isAdmin);
     }

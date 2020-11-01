@@ -124,7 +124,7 @@ public class InterfaceAuthServer {
             HashMap<InetSocketAddress, InetSocketAddress> fileServersList = new HashMap<InetSocketAddress, InetSocketAddress>(
                     1);
             fileServersList.put(new InetSocketAddress("localhost", 7689), new InetSocketAddress("localhost", 7689));
-            Connection clientDB = DriverManager.getConnection(DEFAULT_MYSQLDB_URL, DEFAULT_MYSQLDB_URL,
+            Connection clientDB = DriverManager.getConnection(DEFAULT_MYSQLDB_URL, DEFAULT_MYSQLDB_USERNAME,
                     DEFAULT_MYSQLDB_PASSWORD);
 
             AuthServer serverOne = AuthServer.getServer(clientDB,
