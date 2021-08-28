@@ -99,7 +99,7 @@ final public class PrimaryFileServer {
      * @Code: VARCHAR(10); NOT NULL, PRIMARY KEY, UNIQUE
      * @Uploader: VARCHAR(30); NOT NULL
      * @Filename: VARCHAR(150); NOT NULL
-     * @Downloads_Remaining: BOOLEAN;
+     * @Downloads_Remaining: SMALLINT;
      * @Deletion_Timestamp: DATETIME;
      * @Current_Threads: SMALLINT; NOT NULL
      * @Deletable: BOOLEAN;
