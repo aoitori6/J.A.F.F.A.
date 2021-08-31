@@ -1,4 +1,4 @@
-# Softablitz_Share-Now
+# J.A.F.F.A. : Just Another Fast Filesharing Application
 
 # Basic Features:
   [X]User Features:  
